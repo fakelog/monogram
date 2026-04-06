@@ -705,18 +705,6 @@ fun ChatListContent(component: ChatListComponent) {
                     scrollStates[-2] = scrollState
                 }
 
-                val firstItemId = if (state.selectedFolderId == -2 && !state.isSearchActive) {
-                    state.chatsByFolder[-2]?.firstOrNull()?.id
-                } else {
-                    null
-                }
-
-                LaunchedEffect(firstItemId) {
-                    if (state.selectedFolderId == -2 && !state.isSearchActive && !scrollState.isScrollInProgress && scrollState.firstVisibleItemIndex <= 1) {
-                        scrollState.scrollToItem(0, 0)
-                    }
-                }
-
                 if (state.selectedFolderId == -2 && !state.isSearchActive) {
                     DisposableEffect(Unit) {
                         onDispose {
@@ -1045,14 +1033,6 @@ fun ChatListContent(component: ChatListComponent) {
 
                     scrollStates[folderId] = scrollState
 
-                    val firstItemId = folderChats.firstOrNull()?.id
-
-                    LaunchedEffect(firstItemId) {
-                        if (!scrollState.isScrollInProgress && scrollState.firstVisibleItemIndex <= 1) {
-                            scrollState.scrollToItem(0, 0)
-                        }
-                    }
-
                     val shouldLoadMoreFolder by remember(folderChats, isFolderLoading, scrollState) {
                         derivedStateOf {
                             if (isFolderLoading || folderChats.isEmpty()) {
@@ -1067,16 +1047,6 @@ fun ChatListContent(component: ChatListComponent) {
                     LaunchedEffect(shouldLoadMoreFolder, folderId) {
                         if (shouldLoadMoreFolder) {
                             component.loadMore(folderId)
-                        }
-                    }
-
-                    val isInitialLoad = remember(folderId) { mutableStateOf(true) }
-                    LaunchedEffect(folderChats) {
-                        if (isInitialLoad.value && folderChats.isNotEmpty()) {
-                            if (state.scrollPositions[folderId] == null) {
-                                scrollState.scrollToItem(0, 0)
-                            }
-                            isInitialLoad.value = false
                         }
                     }
 
