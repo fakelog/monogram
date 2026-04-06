@@ -23,7 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
-import org.koin.compose.koinInject
+import org.monogram.presentation.di.appInject
 import org.monogram.domain.models.MessageReactionModel
 import org.monogram.domain.repository.StickerRepository
 import org.monogram.presentation.core.ui.Avatar
@@ -37,8 +37,8 @@ fun MessageReactionsView(
     reactions: List<MessageReactionModel>,
     onReactionClick: (String) -> Unit,
     modifier: Modifier = Modifier,
-    stickerRepository: StickerRepository = koinInject(),
-    appPreferences: AppPreferences = koinInject()
+    stickerRepository: StickerRepository = appInject(),
+    appPreferences: AppPreferences = appInject()
 ) {
     val context = LocalContext.current
     val emojiStyle by appPreferences.emojiStyle.collectAsState()

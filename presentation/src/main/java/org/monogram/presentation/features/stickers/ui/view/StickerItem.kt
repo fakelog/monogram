@@ -7,7 +7,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import kotlinx.coroutines.flow.firstOrNull
-import org.koin.compose.koinInject
+import org.monogram.presentation.di.appInject
 import org.monogram.domain.models.StickerModel
 import org.monogram.domain.repository.StickerRepository
 import java.io.File
@@ -20,7 +20,7 @@ fun StickerItem(
     animate: Boolean = true,
     onClick: ((String) -> Unit)? = null,
     onLongClick: ((StickerModel) -> Unit)? = null,
-    stickerRepository: StickerRepository = koinInject()
+    stickerRepository: StickerRepository = appInject()
 ) {
     val isScrolling = LocalIsScrolling.current
     var currentPath by remember(sticker.id, sticker.path) {

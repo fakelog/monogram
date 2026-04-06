@@ -18,7 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import org.koin.compose.koinInject
+import org.monogram.presentation.di.appInject
 import org.monogram.domain.models.MessageEntity
 import org.monogram.domain.models.MessageEntityType
 import org.monogram.presentation.core.util.AppPreferences
@@ -53,7 +53,7 @@ fun buildAnnotatedMessageTextWithEmoji(
     entities: List<MessageEntity>,
     isOutgoing: Boolean = false,
     revealedSpoilers: List<Int> = emptyList(),
-    appPreferences: AppPreferences = koinInject()
+    appPreferences: AppPreferences = appInject()
 ): AnnotatedString {
     val context = LocalContext.current
     val emojiStyle by appPreferences.emojiStyle.collectAsState()

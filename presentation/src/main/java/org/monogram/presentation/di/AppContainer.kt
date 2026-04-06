@@ -64,6 +64,7 @@ interface RepositoriesContainer {
     val gifRepository: GifRepository
     val emojiRepository: EmojiRepository
     val updateRepository: UpdateRepository
+    val streamingRepository: StreamingRepository
 }
 
 interface UtilsContainer {
@@ -83,4 +84,5 @@ interface UtilsContainer {
     fun distrManager(): DistrManager
     fun downloadUtils(): IDownloadUtils
     fun stringProvider(): StringProvider
+    fun playerDataSourceFactory(): PlayerDataSourceFactory
 }

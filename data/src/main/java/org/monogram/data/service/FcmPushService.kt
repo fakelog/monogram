@@ -4,17 +4,23 @@ import android.os.PowerManager
 import android.util.Log
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
+import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
 import org.drinkless.tdlib.TdApi
 import org.json.JSONObject
-import org.koin.android.ext.android.inject
 import org.monogram.data.gateway.TelegramGateway
 import org.monogram.domain.repository.AppPreferencesProvider
 import org.monogram.domain.repository.PushProvider
+import javax.inject.Inject
 
+@AndroidEntryPoint
 class FcmPushService : FirebaseMessagingService() {
-    private val gateway: TelegramGateway by inject()
-    private val appPreferences: AppPreferencesProvider by inject()
+    @Inject
+    lateinit var gateway: TelegramGateway
+
+    @Inject
+    lateinit var appPreferences: AppPreferencesProvider
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onNewToken(token: String) {

@@ -26,7 +26,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
-import org.koin.compose.koinInject
+import org.monogram.presentation.di.appInject
 import org.monogram.domain.models.FolderModel
 import org.monogram.presentation.R
 import org.monogram.presentation.core.util.AppPreferences
@@ -49,7 +49,7 @@ fun FolderTabs(
     var contextMenuExpanded by remember { mutableStateOf(false) }
     var contextMenuFolderIndex by remember { mutableIntStateOf(-1) }
     val context = LocalContext.current
-    val appPreferences: AppPreferences = koinInject()
+    val appPreferences: AppPreferences = appInject()
     val emojiStyle by appPreferences.emojiStyle.collectAsState()
     val emojiFontFamily = remember(context, emojiStyle) { getEmojiFontFamily(context, emojiStyle) }
 

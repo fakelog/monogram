@@ -10,17 +10,21 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
-import androidx.core.app.ServiceCompat
+import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.combine
-import org.koin.android.ext.android.inject
 import org.monogram.domain.repository.AppPreferencesProvider
 import org.monogram.domain.repository.PushProvider
 import org.monogram.domain.repository.StringProvider
+import javax.inject.Inject
 
+@AndroidEntryPoint
 class TdNotificationService : Service() {
-    private val appPreferences: AppPreferencesProvider by inject()
-    private val stringProvider: StringProvider by inject()
+    @Inject
+    lateinit var appPreferences: AppPreferencesProvider
+
+    @Inject
+    lateinit var stringProvider: StringProvider
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var isServiceRunning = false
@@ -129,12 +133,12 @@ class TdNotificationService : Service() {
         }
 
         try {
-            ServiceCompat.startForeground(
-                this,
-                FOREGROUND_ID,
-                notification,
-                foregroundServiceType
-            )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(FOREGROUND_ID, notification, foregroundServiceType)
+            } else {
+                @Suppress("DEPRECATION")
+                startForeground(FOREGROUND_ID, notification)
+            }
 
             if (appPreferences.hideForegroundNotification.value) {
                 serviceScope.launch {

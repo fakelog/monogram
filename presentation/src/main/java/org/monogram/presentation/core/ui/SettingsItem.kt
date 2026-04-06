@@ -23,7 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.flow.filter
-import org.koin.compose.koinInject
+import org.monogram.presentation.di.appInject
 import org.monogram.domain.models.FileModel
 import org.monogram.domain.repository.FileRepository
 import java.io.File
@@ -89,7 +89,7 @@ fun SettingsItem(
                         tint = iconBackgroundColor
                     )
                 } else if (icon is FileModel) {
-                    val fileRepository: FileRepository = koinInject()
+                    val fileRepository: FileRepository = appInject()
                     var localPath by remember(icon.id) { mutableStateOf(icon.local.path) }
 
                     LaunchedEffect(icon.id) {

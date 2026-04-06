@@ -6,29 +6,41 @@ import android.util.Log
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
-import org.koin.android.ext.android.get
-import org.koin.android.ext.koin.androidContext
-import org.koin.core.context.startKoin
+import dagger.hilt.android.HiltAndroidApp
 import org.maplibre.android.MapLibre
 import org.maplibre.android.WellKnownTileServer
-import org.monogram.app.di.appModule
+import org.monogram.app.di.HiltAppContainer
+import org.monogram.app.di.StartupInitializer
 import org.monogram.domain.managers.DistrManager
 import org.monogram.domain.repository.AppPreferencesProvider
 import org.monogram.domain.repository.PushProvider
 import org.monogram.presentation.di.AppContainer
-import org.monogram.presentation.di.KoinAppContainer
+import javax.inject.Inject
 import java.io.PrintWriter
 import java.io.StringWriter
-import kotlin.jvm.java
 import kotlin.system.exitProcess
 
+@HiltAndroidApp
 class App : Application(), SingletonImageLoader.Factory {
-    lateinit var container: AppContainer
+    lateinit var appContainer: AppContainer
+
+    @Inject
+    lateinit var startupInitializer: StartupInitializer
+
+    @Inject
+    lateinit var distrManager: DistrManager
+
+    @Inject
+    lateinit var appPreferencesProvider: AppPreferencesProvider
+
+    @Inject
+    lateinit var imageLoader: ImageLoader
 
     override fun onCreate() {
         super.onCreate()
         initCrashHandler()
-        initKoin()
+        startupInitializer.initialize()
+        initAppContainer()
         initMapLibre()
         checkPushAvailability()
     }
@@ -56,12 +68,8 @@ class App : Application(), SingletonImageLoader.Factory {
         }
     }
 
-    private fun initKoin() {
-        val koin = startKoin {
-            androidContext(this@App)
-            modules(appModule)
-        }.koin
-        container = KoinAppContainer(koin)
+    private fun initAppContainer() {
+        appContainer = HiltAppContainer(this)
     }
 
     private fun initMapLibre() {
@@ -69,17 +77,15 @@ class App : Application(), SingletonImageLoader.Factory {
     }
 
     private fun checkPushAvailability() {
-        val distrManager = get<DistrManager>()
         val isGmsAvailable = distrManager.isGmsAvailable()
         val isFcmAvailable = distrManager.isFcmAvailable()
 
-        val prefs = get<AppPreferencesProvider>()
-        if (!(isGmsAvailable && isFcmAvailable) && prefs.pushProvider.value == PushProvider.FCM) {
-            prefs.setPushProvider(PushProvider.GMS_LESS)
+        if (!(isGmsAvailable && isFcmAvailable) && appPreferencesProvider.pushProvider.value == PushProvider.FCM) {
+            appPreferencesProvider.setPushProvider(PushProvider.GMS_LESS)
         }
     }
 
     override fun newImageLoader(context: PlatformContext): ImageLoader {
-        return get<ImageLoader>()
+        return imageLoader
     }
 }

@@ -40,7 +40,7 @@ import androidx.compose.ui.unit.*
 import androidx.compose.ui.zIndex
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import org.koin.compose.koinInject
+import org.monogram.presentation.di.appInject
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
 import org.monogram.domain.models.MessageViewerModel
@@ -107,7 +107,7 @@ fun MessageOptionsMenu(
     val configuration = LocalConfiguration.current
     val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
-    val emojiRepository: EmojiRepository = koinInject()
+    val emojiRepository: EmojiRepository = appInject()
 
     val screenHeight = with(density) { configuration.screenHeightDp.dp.toPx() }.toInt()
     val windowInsets = WindowInsets.systemBars.union(WindowInsets.ime)
@@ -956,7 +956,7 @@ private fun ReactionsRow(
     onAppearanceAnimationConsumed: () -> Unit,
     onReactionsChanged: (Int) -> Unit,
     onReaction: (String) -> Unit,
-    appPreferences: AppPreferences = koinInject()
+    appPreferences: AppPreferences = appInject()
 ) {
     val haptic = LocalHapticFeedback.current
 

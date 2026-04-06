@@ -2,6 +2,7 @@ import java.util.*
 
 plugins {
     alias(libs.plugins.android.library)
+    alias(libs.plugins.hilt.android)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
@@ -64,7 +65,7 @@ android {
 dependencies {
     implementation(project(":core"))
     implementation(project(":domain"))
-    implementation(libs.koin.android)
+    implementation(libs.hilt.android)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.kotlinx.serialization.json)
@@ -74,6 +75,7 @@ dependencies {
 
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
+    ksp(libs.hilt.compiler)
     ksp(libs.androidx.room.compiler)
 
     testImplementation(libs.junit)

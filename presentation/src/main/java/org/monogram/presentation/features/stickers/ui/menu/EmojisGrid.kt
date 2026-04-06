@@ -33,7 +33,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
-import org.koin.compose.koinInject
+import org.monogram.presentation.di.appInject
 import org.monogram.domain.models.RecentEmojiModel
 import org.monogram.domain.models.StickerModel
 import org.monogram.domain.models.StickerSetModel
@@ -52,9 +52,9 @@ fun EmojisGrid(
     emojiOnlyMode: Boolean = false,
     onSearchFocused: (Boolean) -> Unit = {},
     contentPadding: PaddingValues = PaddingValues(0.dp),
-    stickerRepository: StickerRepository = koinInject(),
-    emojiRepository: EmojiRepository = koinInject(),
-    appPreferences: AppPreferences = koinInject()
+    stickerRepository: StickerRepository = appInject(),
+    emojiRepository: EmojiRepository = appInject(),
+    appPreferences: AppPreferences = appInject()
 ) {
     var standardEmojis by remember { mutableStateOf<List<String>>(emptyList()) }
     val customEmojiSets by stickerRepository.customEmojiStickerSets.collectAsState(initial = emptyList())

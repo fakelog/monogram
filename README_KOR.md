@@ -187,7 +187,7 @@ MonoGram은 최신 안드로이드 개발 도구와 라이브러리를 활용합
 | **언어** | [Kotlin](https://kotlinlang.org/) |
 | **UI 툴킷** | [Jetpack Compose](https://developer.android.com/jetpack/compose) (Material 3) |
 | **아키텍처** | [Decompose](https://github.com/arkivanov/Decompose) (Navigation), [MVIKotlin](https://github.com/arkivanov/MVIKotlin) |
-| **의존성 주입 (DI)** | [Koin](https://insert-koin.io/) |
+| **의존성 주입 (DI)** | [Hilt](https://dagger.dev/hilt/) |
 | **비동기** | Coroutines & Flow |
 | **텔레그램 코어** | [TDLib](https://core.telegram.org/tdlib) (Telegram Database Library) |
 | **이미지 로딩** | [Coil 3](https://coil-kt.github.io/coil/) |

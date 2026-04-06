@@ -234,7 +234,7 @@ Android:
 | **Lenguaje**                  | [Kotlin](https://kotlinlang.org/)                                                                                     |
 | **UI Toolkit**                | [Jetpack Compose](https://developer.android.com/jetpack/compose) (Material 3)                                         |
 | **Arquitectura**              | [Decompose](https://github.com/arkivanov/Decompose) (Navigation), [MVIKotlin](https://github.com/arkivanov/MVIKotlin) |
-| **Inyección de Dependencias** | [Koin](https://insert-koin.io/)                                                                                       |
+| **Inyección de Dependencias** | [Hilt](https://dagger.dev/hilt/)                                                                                       |
 | **Asincronía**                | Coroutines & Flow                                                                                                     |
 | **Núcleo de Telegram**        | [TDLib](https://core.telegram.org/tdlib) (Telegram Database Library)                                                  |
 | **Carga de imágenes**         | [Coil 3](https://coil-kt.github.io/coil/)                                                                             |

@@ -66,7 +66,6 @@ dependencies {
     implementation(libs.bundles.coil)
     implementation(libs.bundles.decompose)
     implementation(libs.bundles.mvikotlin)
-    implementation(libs.bundles.koin)
 
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.play.services.mlkit.barcode.scanning)

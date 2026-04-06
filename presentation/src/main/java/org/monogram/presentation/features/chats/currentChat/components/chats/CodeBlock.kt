@@ -40,7 +40,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import org.koin.compose.koinInject
+import org.monogram.presentation.di.appInject
 import org.monogram.presentation.core.util.AppPreferences
 import org.monogram.presentation.core.util.NightMode
 import org.monogram.presentation.features.chats.currentChat.components.chats.code.CodeHighlighter
@@ -52,7 +52,7 @@ fun CodeBlock(
     language: String,
     isOutgoing: Boolean,
     modifier: Modifier = Modifier,
-    appPreferences: AppPreferences = koinInject()
+    appPreferences: AppPreferences = appInject()
 ) {
     val localClipboard = LocalClipboard.current
     val context = LocalContext.current

@@ -57,7 +57,7 @@ import androidx.window.core.layout.WindowWidthSizeClass
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
-import org.koin.compose.koinInject
+import org.monogram.presentation.di.appInject
 import org.monogram.domain.models.ChatType
 import org.monogram.domain.repository.ConnectionStatus
 import org.monogram.presentation.R
@@ -1249,8 +1249,8 @@ fun ChatListContent(component: ChatListComponent) {
         state.instantViewUrl?.let { url ->
             InstantViewer(
                 url = url,
-                messageRepository = koinInject(),
-                fileRepository = koinInject(),
+                messageRepository = appInject(),
+                fileRepository = appInject(),
                 onDismiss = { component.onDismissInstantView() },
                 onOpenWebView = { component.onOpenWebView(it) }
             )
@@ -1274,7 +1274,7 @@ fun ChatListContent(component: ChatListComponent) {
                 botUserId = botUserId,
                 baseUrl = webAppUrl ?: "",
                 botName = botName ?: stringResource(R.string.mini_app_default_name),
-                webAppRepository = koinInject(),
+                webAppRepository = appInject(),
                 onDismiss = { component.onDismissWebApp() }
             )
         }

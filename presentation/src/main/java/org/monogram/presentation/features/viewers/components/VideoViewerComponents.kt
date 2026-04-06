@@ -51,7 +51,7 @@ import androidx.media3.extractor.mp4.Mp4Extractor
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
-import org.koin.compose.koinInject
+import org.monogram.presentation.di.appInject
 import org.monogram.domain.repository.PlayerDataSourceFactory
 import org.monogram.domain.repository.StreamingRepository
 import org.monogram.presentation.R
@@ -96,8 +96,8 @@ fun VideoPage(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val streamingRepository = koinInject<StreamingRepository>()
-    val playerFactory = koinInject<PlayerDataSourceFactory>()
+    val streamingRepository = appInject<StreamingRepository>()
+    val playerFactory = appInject<PlayerDataSourceFactory>()
     val seekDurationMs = seekDuration * 1000L
 
     val currentOnDismiss by rememberUpdatedState(onDismiss)

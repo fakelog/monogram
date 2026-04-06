@@ -9,20 +9,24 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.fragment.app.FragmentActivity
 import com.arkivanov.decompose.ExperimentalDecomposeApi
 import com.arkivanov.decompose.retainedComponent
-import org.koin.android.ext.android.inject
+import dagger.hilt.android.AndroidEntryPoint
 import org.monogram.app.ui.theme.AppThemeContainer
 import org.monogram.data.service.TdNotificationService
 import org.monogram.domain.repository.AppPreferencesProvider
 import org.monogram.domain.repository.PushProvider
+import org.monogram.presentation.di.LocalAppContainer
 import org.monogram.presentation.core.util.LocalVideoPlayerPool
 import org.monogram.presentation.features.chats.currentChat.components.chats.LocalLinkHandler
 import org.monogram.presentation.root.DefaultAppComponentContext
 import org.monogram.presentation.root.DefaultRootComponent
 import org.monogram.presentation.root.RootComponent
+import javax.inject.Inject
 
+@AndroidEntryPoint
 class MainActivity : FragmentActivity() {
     private lateinit var root: RootComponent
-    private val appPreferences: AppPreferencesProvider by inject()
+    @Inject
+    lateinit var appPreferences: AppPreferencesProvider
 
     @OptIn(ExperimentalDecomposeApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -33,7 +37,7 @@ class MainActivity : FragmentActivity() {
             DefaultRootComponent(
                 DefaultAppComponentContext(
                     componentContext = componentContext,
-                    container = (application as App).container,
+                    container = (application as App).appContainer,
                 )
             )
         }
@@ -44,8 +48,9 @@ class MainActivity : FragmentActivity() {
         setContent {
             AppThemeContainer(root.appPreferences) {
                 CompositionLocalProvider(
-                LocalLinkHandler provides root::handleLink,
-                        LocalVideoPlayerPool provides root.videoPlayerPool
+                    LocalAppContainer provides (application as App).appContainer,
+                    LocalLinkHandler provides root::handleLink,
+                    LocalVideoPlayerPool provides root.videoPlayerPool,
                 ) {
                     MainContent(root)
                 }

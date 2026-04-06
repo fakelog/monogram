@@ -32,7 +32,7 @@ import coil3.compose.SubcomposeAsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import kotlinx.coroutines.delay
-import org.koin.compose.koinInject
+import org.monogram.presentation.di.appInject
 import org.monogram.domain.models.GifModel
 import org.monogram.domain.repository.GifRepository
 import org.monogram.domain.repository.StickerRepository
@@ -48,7 +48,7 @@ fun GifsView(
     onSearchFocused: (Boolean) -> Unit,
     contentPadding: PaddingValues = PaddingValues(0.dp),
     stickerRepository: StickerRepository,
-    gifRepository: GifRepository = koinInject()
+    gifRepository: GifRepository = appInject()
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var debouncedSearchQuery by remember { mutableStateOf("") }

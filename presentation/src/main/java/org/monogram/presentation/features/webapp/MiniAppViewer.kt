@@ -24,7 +24,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.core.view.WindowCompat
 import kotlinx.coroutines.launch
 import org.json.JSONObject
-import org.koin.compose.koinInject
+import org.monogram.presentation.di.appInject
 import org.monogram.domain.models.webapp.ThemeParams
 import org.monogram.domain.repository.*
 import org.monogram.presentation.core.util.CryptoManager
@@ -49,11 +49,11 @@ fun MiniAppViewer(
     val clipboardManager = LocalClipboard.current
     val colorScheme = MaterialTheme.colorScheme
     val density = LocalDensity.current
-    val locationRepository: LocationRepository = koinInject()
-    val botPreferences: BotPreferencesProvider = koinInject()
-    val userRepository: UserRepository = koinInject()
-    val paymentRepository: PaymentRepository = koinInject()
-    val fileRepository: FileRepository = koinInject()
+    val locationRepository: LocationRepository = appInject()
+    val botPreferences: BotPreferencesProvider = appInject()
+    val userRepository: UserRepository = appInject()
+    val paymentRepository: PaymentRepository = appInject()
+    val fileRepository: FileRepository = appInject()
     val isDark = isSystemInDarkTheme()
     val scope = rememberCoroutineScope()
     val currentUser by userRepository.currentUserFlow.collectAsState()

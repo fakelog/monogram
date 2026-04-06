@@ -28,7 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import org.koin.compose.koinInject
+import org.monogram.presentation.di.appInject
 import org.monogram.domain.models.StickerModel
 import org.monogram.domain.models.StickerSetModel
 import org.monogram.domain.repository.StickerRepository
@@ -44,7 +44,7 @@ fun StickersView(
     onStickerSelected: (String) -> Unit,
     onSearchFocused: (Boolean) -> Unit = {},
     contentPadding: PaddingValues = PaddingValues(0.dp),
-    stickerRepository: StickerRepository = koinInject()
+    stickerRepository: StickerRepository = appInject()
 ) {
     val stickerSets by stickerRepository.installedStickerSets.collectAsState(initial = emptyList())
     var selectedSetId by remember { mutableLongStateOf(-1L) } // -1 for recent stickers

@@ -15,7 +15,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import org.koin.compose.koinInject
+import org.monogram.presentation.di.appInject
 import org.monogram.domain.models.ChatPermissionsModel
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
@@ -47,7 +47,7 @@ fun ChatMessageOptionsMenu(
     onDismiss: () -> Unit
 ) {
     val nativeClipboard = localClipboard.nativeClipboard
-    val messageRepository: MessageAiRepository = koinInject()
+    val messageRepository: MessageAiRepository = appInject()
     val canCheckViewersList = remember(state.isChannel, state.isGroup, state.memberCount) {
         !state.isChannel && (!state.isGroup || state.memberCount in 1 until 100)
     }

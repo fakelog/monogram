@@ -19,7 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.firstOrNull
-import org.koin.compose.koinInject
+import org.monogram.presentation.di.appInject
 import org.monogram.domain.models.StickerSetModel
 import org.monogram.domain.repository.StickerRepository
 import org.monogram.presentation.R
@@ -204,7 +204,7 @@ private fun StickerSetActionsMenu(
 
 @Composable
 private fun StickerThumbnail(stickerSet: StickerSetModel) {
-    val stickerRepository = koinInject<StickerRepository>()
+    val stickerRepository = appInject<StickerRepository>()
     val firstSticker = stickerSet.stickers.firstOrNull()
     val targetSticker = stickerSet.thumbnail ?: firstSticker
 

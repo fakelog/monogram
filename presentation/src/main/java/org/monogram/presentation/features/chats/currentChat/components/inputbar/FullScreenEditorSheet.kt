@@ -42,7 +42,7 @@ import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowCompat
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import org.koin.compose.koinInject
+import org.monogram.presentation.di.appInject
 import org.monogram.domain.models.MessageEntityType
 import org.monogram.domain.models.StickerModel
 import org.monogram.domain.repository.*
@@ -177,8 +177,8 @@ fun FullScreenEditorSheet(
     var aiErrorMessage by remember { mutableStateOf<String?>(null) }
     var aiLoading by remember { mutableStateOf(false) }
 
-    val snippetProvider: EditorSnippetProvider = koinInject()
-    val messageRepository: MessageAiRepository = koinInject()
+    val snippetProvider: EditorSnippetProvider = appInject()
+    val messageRepository: MessageAiRepository = appInject()
     val textCompositionStyles by messageRepository.textCompositionStyles.collectAsState()
     val effectiveAiStyles = remember(textCompositionStyles) {
         if (textCompositionStyles.isEmpty()) DEFAULT_AI_STYLES else textCompositionStyles

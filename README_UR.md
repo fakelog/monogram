@@ -188,7 +188,7 @@ sudo apt-get install build-essential git curl wget php perl gperf unzip zip defa
 | **زبان** | [Kotlin](https://kotlinlang.org/) |
 | **UI ٹول کٹ** | [Jetpack Compose](https://developer.android.com/jetpack/compose) (Material 3) |
 | **آرکیٹیکچر** | [Decompose](https://github.com/arkivanov/Decompose) (Navigation), [MVIKotlin](https://github.com/arkivanov/MVIKotlin) |
-| **ڈیپینڈینسی انجیکشن** | [Koin](https://insert-koin.io/) |
+| **ڈیپینڈینسی انجیکشن** | [Hilt](https://dagger.dev/hilt/) |
 | **ایسنک (Async)** | Coroutines & Flow |
 | **ٹیلیگرام کور** | [TDLib](https://core.telegram.org/tdlib) (Telegram Database Library) |
 | **امیج لوڈنگ** | [Coil 3](https://coil-kt.github.io/coil/) |

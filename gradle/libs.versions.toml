@@ -29,7 +29,7 @@ kotlinx-serialization = "1.10.0"
 # Architecture & DI
 decompose = "3.4.0"
 mvikotlin = "4.3.0"
-koin = "4.1.1"
+hilt = "2.58"
 
 # UI & Media
 coil = "3.4.0"
@@ -108,9 +108,9 @@ mvikotlin = { module = "com.arkivanov.mvikotlin:mvikotlin", version.ref = "mviko
 mvikotlin-main = { module = "com.arkivanov.mvikotlin:mvikotlin-main", version.ref = "mvikotlin" }
 mvikotlin-extensions-coroutines = { module = "com.arkivanov.mvikotlin:mvikotlin-extensions-coroutines", version.ref = "mvikotlin" }
 
-# Koin
-koin-android = { module = "io.insert-koin:koin-android", version.ref = "koin" }
-koin-compose = { module = "io.insert-koin:koin-androidx-compose", version.ref = "koin" }
+# Hilt
+hilt-android = { module = "com.google.dagger:hilt-android", version.ref = "hilt" }
+hilt-compiler = { module = "com.google.dagger:hilt-compiler", version.ref = "hilt" }
 
 # Coil
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
@@ -177,11 +177,6 @@ mvikotlin = [
     "mvikotlin-main",
     "mvikotlin-extensions-coroutines"
 ]
-koin = [
-    "koin-android",
-    "koin-compose"
-]
-
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
@@ -193,3 +188,4 @@ google-oss-licenses = { id = "com.google.android.gms.oss-licenses-plugin", versi
 google-services = { id = "com.google.gms.google-services", version.ref = "google-services" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 androidx-baselineprofile = { id = "androidx.baselineprofile", version.ref = "baselineprofile" }
+hilt-android = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }

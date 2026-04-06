@@ -3,13 +3,15 @@ package org.monogram.data.service
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import dagger.hilt.android.AndroidEntryPoint
 import org.monogram.data.di.TdNotificationManager
-import org.koin.core.component.KoinComponent
-import org.koin.core.component.inject
+import javax.inject.Inject
 
-class NotificationDismissReceiver : BroadcastReceiver(), KoinComponent {
+@AndroidEntryPoint
+class NotificationDismissReceiver : BroadcastReceiver() {
 
-    private val notificationManager: TdNotificationManager by inject()
+    @Inject
+    lateinit var notificationManager: TdNotificationManager
 
     override fun onReceive(context: Context, intent: Intent) {
         val chatId = intent.getLongExtra("chat_id", 0L)

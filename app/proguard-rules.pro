@@ -16,10 +16,6 @@
 -keepclassmembers class * extends androidx.compose.runtime.Composer { *; }
 -keep class androidx.compose.runtime.Recomposer { *; }
 
--keepclassmembers class * {
-    @org.koin.core.annotation.KoinInternalApi *;
-}
-
 -keep class com.arkivanov.decompose.** { *; }
 
 -keepattributes *Annotation*, EnclosingMethod, InnerClasses

@@ -188,7 +188,7 @@ MonoGram leverages the latest Android development tools and libraries:
 | **Language** | [Kotlin](https://kotlinlang.org/) |
 | **UI Toolkit** | [Jetpack Compose](https://developer.android.com/jetpack/compose) (Material 3) |
 | **Architecture** | [Decompose](https://github.com/arkivanov/Decompose) (Navigation), [MVIKotlin](https://github.com/arkivanov/MVIKotlin) |
-| **Dependency Injection** | [Koin](https://insert-koin.io/) |
+| **Dependency Injection** | [Hilt](https://dagger.dev/hilt/) |
 | **Async** | Coroutines & Flow |
 | **Telegram Core** | [TDLib](https://core.telegram.org/tdlib) (Telegram Database Library) |
 | **Image Loading** | [Coil 3](https://coil-kt.github.io/coil/) |

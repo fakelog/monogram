@@ -17,7 +17,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import org.koin.compose.koinInject
+import org.monogram.presentation.di.appInject
 import org.monogram.domain.repository.StickerRepository
 import org.monogram.presentation.features.stickers.ui.view.StickerImage
 import org.monogram.presentation.features.webapp.MainButtonState
@@ -49,7 +49,7 @@ private fun Modifier.shineEffect(enabled: Boolean, shineOffset: Float): Modifier
 private fun CustomEmojiIcon(
     customEmojiId: String?,
     modifier: Modifier = Modifier,
-    stickerRepository: StickerRepository = koinInject()
+    stickerRepository: StickerRepository = appInject()
 ) {
     val emojiIdLong = customEmojiId?.toLongOrNull() ?: return
     val customEmojiStickerSets by stickerRepository.customEmojiStickerSets.collectAsState()

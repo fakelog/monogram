@@ -188,7 +188,7 @@ MonoGram использует новейшие инструменты и биб�
 | **Язык** | [Kotlin](https://kotlinlang.org/) |
 | **UI Toolkit** | [Jetpack Compose](https://developer.android.com/jetpack/compose) (Material 3) |
 | **Архитектура** | [Decompose](https://github.com/arkivanov/Decompose) (Навигация), [MVIKotlin](https://github.com/arkivanov/MVIKotlin) |
-| **Внедрение зависимостей** | [Koin](https://insert-koin.io/) |
+| **Внедрение зависимостей** | [Hilt](https://dagger.dev/hilt/) |
 | **Асинхронность** | Coroutines & Flow |
 | **Ядро Telegram** | [TDLib](https://core.telegram.org/tdlib) (Telegram Database Library) |
 | **Загрузка изображений** | [Coil 3](https://coil-kt.github.io/coil/) |

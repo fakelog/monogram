@@ -5,6 +5,8 @@ import com.google.gms.googleservices.GoogleServicesPlugin
 
 plugins {
     alias(libs.plugins.android.application)
+    alias(libs.plugins.hilt.android)
+    alias(libs.plugins.ksp)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.google.oss.licenses)
@@ -108,10 +110,12 @@ dependencies {
     implementation(libs.bundles.androidx.compose)
 
     implementation(libs.bundles.decompose)
-    implementation(libs.bundles.koin)
 
     implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
+    implementation(libs.coil.svg)
     implementation(libs.coil.video)
+    implementation(libs.hilt.android)
 
     implementation(libs.androidx.biometric)
     implementation(libs.play.services.oss.licenses)
@@ -125,6 +129,8 @@ dependencies {
     implementation(project(":presentation"))
     implementation(project(":data"))
     implementation(project(":core"))
+
+    ksp(libs.hilt.compiler)
 
     baselineProfile(project(":baselineprofile"))
 }

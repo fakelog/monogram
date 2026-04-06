@@ -42,7 +42,7 @@ import com.arkivanov.decompose.extensions.compose.subscribeAsState
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import org.koin.compose.koinInject
+import org.monogram.presentation.di.appInject
 import org.monogram.domain.models.StickerSetModel
 import org.monogram.presentation.R
 import org.monogram.presentation.core.ui.*
@@ -288,7 +288,7 @@ fun StickersContent(component: StickersComponent) {
                     botUserId = state.miniAppBotUserId,
                     baseUrl = state.miniAppUrl!!,
                     botName = state.miniAppName!!,
-                    webAppRepository = koinInject(),
+                    webAppRepository = appInject(),
                     onDismiss = { component.onDismissMiniApp() }
                 )
             }

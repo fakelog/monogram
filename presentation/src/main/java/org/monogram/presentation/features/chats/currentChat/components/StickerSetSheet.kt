@@ -27,7 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
-import org.koin.compose.koinInject
+import org.monogram.presentation.di.appInject
 import org.monogram.domain.models.StickerSetModel
 import org.monogram.domain.models.StickerType
 import org.monogram.domain.repository.StickerRepository
@@ -41,7 +41,7 @@ fun StickerSetSheet(
     stickerSet: StickerSetModel,
     onDismiss: () -> Unit,
     onStickerClick: (String) -> Unit,
-    stickerRepository: StickerRepository = koinInject()
+    stickerRepository: StickerRepository = appInject()
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()

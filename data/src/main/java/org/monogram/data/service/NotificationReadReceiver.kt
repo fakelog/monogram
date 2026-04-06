@@ -4,17 +4,21 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import dagger.hilt.android.AndroidEntryPoint
 import org.drinkless.tdlib.TdApi
-import org.koin.core.component.KoinComponent
-import org.koin.core.component.inject
 import org.monogram.data.di.TdNotificationManager
 import org.monogram.data.gateway.TdLibException
 import org.monogram.data.gateway.TelegramGateway
+import javax.inject.Inject
 
-class NotificationReadReceiver : BroadcastReceiver(), KoinComponent {
+@AndroidEntryPoint
+class NotificationReadReceiver : BroadcastReceiver() {
 
-    private val gateway: TelegramGateway by inject()
-    private val notificationManager: TdNotificationManager by inject()
+    @Inject
+    lateinit var gateway: TelegramGateway
+
+    @Inject
+    lateinit var notificationManager: TdNotificationManager
 
     override fun onReceive(context: Context, intent: Intent) {
         val chatId = intent.getLongExtra("chat_id", 0L)

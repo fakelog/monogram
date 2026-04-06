@@ -4,10 +4,13 @@ import android.content.Context
 import android.net.ConnectivityManager
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import dagger.Module
+import dagger.Provides
+import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
+import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
-import org.koin.android.ext.koin.androidContext
-import org.koin.dsl.module
 import org.monogram.core.DispatcherProvider
 import org.monogram.data.chats.ChatCache
 import org.monogram.data.datasource.FileDataSource
@@ -15,6 +18,7 @@ import org.monogram.data.datasource.PlayerDataSourceFactoryImpl
 import org.monogram.data.datasource.TdFileDataSource
 import org.monogram.data.datasource.cache.*
 import org.monogram.data.datasource.remote.*
+import org.monogram.data.db.dao.*
 import org.monogram.data.db.MonogramDatabase
 import org.monogram.data.db.MonogramMigrations
 import org.monogram.data.gateway.TelegramGateway
@@ -30,625 +34,983 @@ import org.monogram.data.repository.*
 import org.monogram.data.repository.user.UserRepositoryImpl
 import org.monogram.data.stickers.StickerFileManager
 import org.monogram.domain.repository.*
+import javax.inject.Singleton
 
-val dataModule = module {
-    single { CoroutineScope(SupervisorJob() + get<DispatcherProvider>().default) }
+@Module
+@InstallIn(SingletonComponent::class)
+object DataModule {
 
-    single(createdAtStart = true) { TdLibClient() }
+    @Provides
+    @Singleton
+    fun provideCoroutineScope(dispatcherProvider: DispatcherProvider): CoroutineScope =
+        CoroutineScope(SupervisorJob() + dispatcherProvider.default)
 
-    single<DispatcherProvider> { DefaultDispatcherProvider() }
-    single<StringProvider> { AndroidStringProvider(androidContext()) }
-    single { TdLibParametersProvider(androidContext()) }
-    single(createdAtStart = true) {
-        OfflineWarmup(
-            scope = get(),
-            dispatchers = get(),
-            gateway = get(),
-            chatDao = get(),
-            messageDao = get(),
-            userDao = get(),
-            userFullInfoDao = get(),
-            chatFullInfoDao = get(),
-            messageMapper = get(),
-            chatCache = get(),
-            stickerRepository = get()
-        )
-    }
-    single(createdAtStart = true) {
-        SponsorSyncManager(
-            scope = get(),
-            gateway = get(),
-            sponsorDao = get(),
-            authRepository = get()
-        )
-    }
+    @Provides
+    @Singleton
+    internal fun provideTdLibClient() = TdLibClient()
 
-    single { ChatCache() }
-    single<TelegramGateway>(createdAtStart = true) {
-        TelegramGatewayImpl(get())
-    }
-    single<UpdateDispatcher> {
-        UpdateDispatcherImpl(
-            gateway = get()
-        )
-    }
-    single<FileDataSource> {
-        TdFileDataSource(
-            gateway = get(),
-            fileDownloadQueue = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideDispatcherProvider(): DispatcherProvider = DefaultDispatcherProvider()
 
-    factory<AuthRemoteDataSource> {
-        TdAuthRemoteDataSource(
-            gateway = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideStringProvider(@ApplicationContext context: Context): StringProvider =
+        AndroidStringProvider(context)
 
-    single {
-        NominatimRemoteDataSource()
-    }
+    @Provides
+    @Singleton
+    fun provideTdLibParametersProvider(@ApplicationContext context: Context) =
+        TdLibParametersProvider(context)
 
-    factory<PlayerDataSourceFactory> {
-        PlayerDataSourceFactoryImpl(
-            fileDataSource = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideChatCache() = ChatCache()
 
-    single<AuthRepository>(createdAtStart = true) {
-        AuthRepositoryImpl(
-            parametersProvider = get(),
-            remote = get(),
-            updates = get(),
-            scope = get()
-        )
-    }
+    @Provides
+    @Singleton
+    internal fun provideTelegramGateway(tdLibClient: TdLibClient): TelegramGateway =
+        TelegramGatewayImpl(tdLibClient)
 
-    factory<UserRemoteDataSource> {
-        TdUserRemoteDataSource(
-            gateway = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideUpdateDispatcher(gateway: TelegramGateway): UpdateDispatcher =
+        UpdateDispatcherImpl(gateway = gateway)
 
-    factory<LinkRemoteDataSource> {
-        TdLinkRemoteDataSource(
-            gateway = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideFileDataSource(
+        gateway: TelegramGateway,
+        fileDownloadQueue: FileDownloadQueue,
+    ): FileDataSource = TdFileDataSource(
+        gateway = gateway,
+        fileDownloadQueue = fileDownloadQueue,
+    )
 
-    // Database
-    single {
-        Room.databaseBuilder(
-            androidContext(),
+    @Provides
+    fun provideAuthRemoteDataSource(gateway: TelegramGateway): AuthRemoteDataSource =
+        TdAuthRemoteDataSource(gateway = gateway)
+
+    @Provides
+    @Singleton
+    fun provideNominatimRemoteDataSource() = NominatimRemoteDataSource()
+
+    @Provides
+    fun providePlayerDataSourceFactory(fileDataSource: FileDataSource): PlayerDataSourceFactory =
+        PlayerDataSourceFactoryImpl(fileDataSource = fileDataSource)
+
+    @Provides
+    @Singleton
+    fun provideAuthRepository(
+        parametersProvider: TdLibParametersProvider,
+        remote: AuthRemoteDataSource,
+        updates: UpdateDispatcher,
+        scope: CoroutineScope,
+    ): AuthRepository = AuthRepositoryImpl(
+        parametersProvider = parametersProvider,
+        remote = remote,
+        updates = updates,
+        scope = scope,
+    )
+
+    @Provides
+    fun provideUserRemoteDataSource(gateway: TelegramGateway): UserRemoteDataSource =
+        TdUserRemoteDataSource(gateway = gateway)
+
+    @Provides
+    fun provideLinkRemoteDataSource(gateway: TelegramGateway): LinkRemoteDataSource =
+        TdLinkRemoteDataSource(gateway = gateway)
+
+    @Provides
+    @Singleton
+    fun provideMonogramDatabase(@ApplicationContext context: Context): MonogramDatabase {
+        return Room.databaseBuilder(
+            context,
             MonogramDatabase::class.java,
-            "monogram_db"
+            "monogram_db",
         )
             .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
             .addMigrations(MonogramMigrations.MIGRATION_26_27)
             .fallbackToDestructiveMigration(dropAllTables = true)
             .build()
     }
-    single { get<MonogramDatabase>().chatDao() }
-    single { get<MonogramDatabase>().messageDao() }
-    single { get<MonogramDatabase>().userDao() }
-    single { get<MonogramDatabase>().chatFullInfoDao() }
-    single { get<MonogramDatabase>().topicDao() }
-    single { get<MonogramDatabase>().userFullInfoDao() }
-    single { get<MonogramDatabase>().stickerSetDao() }
-    single { get<MonogramDatabase>().recentEmojiDao() }
-    single { get<MonogramDatabase>().searchHistoryDao() }
-    single { get<MonogramDatabase>().chatFolderDao() }
-    single { get<MonogramDatabase>().attachBotDao() }
-    single { get<MonogramDatabase>().keyValueDao() }
-    single { get<MonogramDatabase>().notificationSettingDao() }
-    single { get<MonogramDatabase>().wallpaperDao() }
-    single { get<MonogramDatabase>().stickerPathDao() }
-    single { get<MonogramDatabase>().sponsorDao() }
-    single { get<MonogramDatabase>().textCompositionStyleDao() }
 
-    single<UserLocalDataSource> {
-        RoomUserLocalDataSource(
-            userDao = get(),
-            userFullInfoDao = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideChatDao(database: MonogramDatabase) = database.chatDao()
 
-    single<ChatLocalDataSource> {
-        RoomChatLocalDataSource(
-            database = get(),
-            chatDao = get(),
-            messageDao = get(),
-            chatFullInfoDao = get(),
-            topicDao = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideMessageDao(database: MonogramDatabase) = database.messageDao()
 
-    single<StickerLocalDataSource> {
-        RoomStickerLocalDataSource(
-            stickerSetDao = get(),
-            recentEmojiDao = get(),
-            stickerPathDao = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideUserDao(database: MonogramDatabase) = database.userDao()
 
-    single<UserRepository> {
-        UserRepositoryImpl(
-            remote = get(),
-            userLocal = get(),
-            chatLocal = get(),
-            chatCache = get(),
-            updates = get(),
-            scope = get(),
-            gateway = get(),
-            fileQueue = get(),
-            keyValueDao = get(),
-            cacheProvider = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideChatFullInfoDao(database: MonogramDatabase) = database.chatFullInfoDao()
 
-    single<UserProfileEditRepository> {
-        UserProfileEditRepositoryImpl(
-            remote = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideTopicDao(database: MonogramDatabase) = database.topicDao()
 
-    single<ProfilePhotoRepository> {
-        ProfilePhotoRepositoryImpl(
-            remote = get(),
-            chatLocal = get(),
-            gateway = get(),
-            updates = get(),
-            fileQueue = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideUserFullInfoDao(database: MonogramDatabase) = database.userFullInfoDao()
 
-    single<ChatInfoRepository> {
-        ChatInfoRepositoryImpl(
-            remote = get(),
-            chatLocal = get(),
-            userRepository = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideStickerSetDao(database: MonogramDatabase) = database.stickerSetDao()
 
-    single<PremiumRepository> {
-        PremiumRepositoryImpl(
-            remote = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideRecentEmojiDao(database: MonogramDatabase) = database.recentEmojiDao()
 
-    single<BotRepository> {
-        BotRepositoryImpl(
-            remote = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideSearchHistoryDao(database: MonogramDatabase) = database.searchHistoryDao()
 
-    single<ChatStatisticsRepository> {
-        ChatStatisticsRepositoryImpl(
-            remote = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideChatFolderDao(database: MonogramDatabase) = database.chatFolderDao()
 
-    single<SponsorRepository> {
-        SponsorRepositoryImpl(
-            sponsorSyncManager = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideAttachBotDao(database: MonogramDatabase) = database.attachBotDao()
 
-    factory<ChatsRemoteDataSource> {
-        TdChatsRemoteDataSource(
-            gateway = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideKeyValueDao(database: MonogramDatabase) = database.keyValueDao()
 
-    single<ChatsCacheDataSource> {
-        get<ChatCache>()
-    }
+    @Provides
+    @Singleton
+    fun provideNotificationSettingDao(database: MonogramDatabase) = database.notificationSettingDao()
 
-    single<ChatRemoteSource> {
-        TdChatRemoteSource(
-            gateway = get(),
-            connectivityManager = androidContext().getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager,
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideWallpaperDao(database: MonogramDatabase) = database.wallpaperDao()
 
-    factory<ProxyRemoteDataSource> {
-        TdProxyRemoteDataSource(
-            gateway = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideStickerPathDao(database: MonogramDatabase) = database.stickerPathDao()
 
-    single {
-        ChatMapper(get())
-    }
+    @Provides
+    @Singleton
+    fun provideSponsorDao(database: MonogramDatabase) = database.sponsorDao()
 
-    single {
-        StorageMapper(get())
-    }
+    @Provides
+    @Singleton
+    fun provideTextCompositionStyleDao(database: MonogramDatabase) = database.textCompositionStyleDao()
 
-    single {
-        NetworkMapper(get(), get())
-    }
+    @Provides
+    @Singleton
+    fun provideUserLocalDataSource(
+        userDao: UserDao,
+        userFullInfoDao: UserFullInfoDao,
+    ): UserLocalDataSource = RoomUserLocalDataSource(
+        userDao = userDao,
+        userFullInfoDao = userFullInfoDao,
+    )
 
-    single<MessageFileApi> {
-        MessageFileCoordinator(
-            fileDownloadQueue = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideChatLocalDataSource(
+        database: MonogramDatabase,
+        chatDao: ChatDao,
+        messageDao: MessageDao,
+        chatFullInfoDao: ChatFullInfoDao,
+        topicDao: TopicDao,
+    ): ChatLocalDataSource = RoomChatLocalDataSource(
+        database = database,
+        chatDao = chatDao,
+        messageDao = messageDao,
+        chatFullInfoDao = chatFullInfoDao,
+        topicDao = topicDao,
+    )
 
-    single<UserCacheDataSource> {
-        get<ChatCache>()
-    }
+    @Provides
+    @Singleton
+    fun provideStickerLocalDataSource(
+        stickerSetDao: StickerSetDao,
+        recentEmojiDao: RecentEmojiDao,
+        stickerPathDao: StickerPathDao,
+    ): StickerLocalDataSource = RoomStickerLocalDataSource(
+        stickerSetDao = stickerSetDao,
+        recentEmojiDao = recentEmojiDao,
+        stickerPathDao = stickerPathDao,
+    )
 
-    single {
-        TdFileHelper(
-            connectivityManager = androidContext().getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager,
-            fileApi = get(),
-            appPreferences = get(),
-            cache = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideUserRepository(
+        remote: UserRemoteDataSource,
+        userLocal: UserLocalDataSource,
+        chatLocal: ChatLocalDataSource,
+        chatCache: ChatCache,
+        updates: UpdateDispatcher,
+        scope: CoroutineScope,
+        gateway: TelegramGateway,
+        fileQueue: FileDownloadQueue,
+        keyValueDao: KeyValueDao,
+        cacheProvider: CacheProvider,
+    ): UserRepository = UserRepositoryImpl(
+        remote = remote,
+        userLocal = userLocal,
+        chatLocal = chatLocal,
+        chatCache = chatCache,
+        updates = updates,
+        scope = scope,
+        gateway = gateway,
+        fileQueue = fileQueue,
+        keyValueDao = keyValueDao,
+        cacheProvider = cacheProvider,
+    )
 
-    single {
-        CustomEmojiLoader(
-            gateway = get(),
-            fileApi = get(),
-            fileUpdateHandler = get(),
-            fileHelper = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideUserProfileEditRepository(remote: UserRemoteDataSource): UserProfileEditRepository =
+        UserProfileEditRepositoryImpl(remote = remote)
 
-    single {
-        WebPageMapper(
-            fileHelper = get(),
-            appPreferences = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideProfilePhotoRepository(
+        remote: UserRemoteDataSource,
+        chatLocal: ChatLocalDataSource,
+        gateway: TelegramGateway,
+        updates: UpdateDispatcher,
+        fileQueue: FileDownloadQueue,
+    ): ProfilePhotoRepository = ProfilePhotoRepositoryImpl(
+        remote = remote,
+        chatLocal = chatLocal,
+        gateway = gateway,
+        updates = updates,
+        fileQueue = fileQueue,
+    )
 
-    single {
-        MessageContentMapper(
-            fileHelper = get(),
-            appPreferences = get(),
-            customEmojiLoader = get(),
-            webPageMapper = get(),
-            scope = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideChatInfoRepository(
+        remote: UserRemoteDataSource,
+        chatLocal: ChatLocalDataSource,
+        userRepository: UserRepository,
+    ): ChatInfoRepository = ChatInfoRepositoryImpl(
+        remote = remote,
+        chatLocal = chatLocal,
+        userRepository = userRepository,
+    )
 
-    single {
-        MessageSenderResolver(
-            gateway = get(),
-            userRepository = get(),
-            chatInfoRepository = get(),
-            cache = get(),
-            fileHelper = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun providePremiumRepository(remote: UserRemoteDataSource): PremiumRepository =
+        PremiumRepositoryImpl(remote = remote)
 
-    single {
-        MessagePersistenceMapper(
-            cache = get(),
-            fileHelper = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideBotRepository(remote: UserRemoteDataSource): BotRepository =
+        BotRepositoryImpl(remote = remote)
 
-    single {
-        MessageMapper(
-            gateway = get(),
-            userRepository = get(),
-            cache = get(),
-            fileHelper = get(),
-            senderResolver = get(),
-            contentMapper = get(),
-            persistenceMapper = get(),
-            customEmojiLoader = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideChatStatisticsRepository(remote: UserRemoteDataSource): ChatStatisticsRepository =
+        ChatStatisticsRepositoryImpl(remote = remote)
 
-    single {
-        ConnectionManager(
-            chatRemoteSource = get(),
-            proxyRemoteSource = get(),
-            updates = get(),
-            appPreferences = get(),
-            dispatchers = get(),
-            connectivityManager = androidContext().getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager,
-            scope = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideChatsRemoteDataSource(gateway: TelegramGateway): ChatsRemoteDataSource =
+        TdChatsRemoteDataSource(gateway = gateway)
 
-    single {
-        ChatsListRepositoryImpl(
-            remoteDataSource = get(),
-            chatRemoteSource = get(),
-            updates = get(),
-            appPreferences = get(),
-            cacheProvider = get(),
-            dispatchers = get(),
-            cache = get(),
-            chatMapper = get(),
-            messageMapper = get(),
-            gateway = get(),
-            scope = get(),
-            chatLocalDataSource = get(),
-            connectionManager = get(),
-            databaseFile = androidContext().getDatabasePath("monogram_db"),
-            searchHistoryDao = get(),
-            chatFolderDao = get(),
-            userFullInfoDao = get(),
-            fileQueue = get(),
-            fileUpdateHandler = get(),
-            stringProvider = get()
-        )
-    }
-    single<ChatListRepository> { get<ChatsListRepositoryImpl>() }
-    single<ChatFolderRepository> { get<ChatsListRepositoryImpl>() }
-    single<ChatOperationsRepository> { get<ChatsListRepositoryImpl>() }
-    single<ChatSearchRepository> { get<ChatsListRepositoryImpl>() }
-    single<ForumTopicsRepository> { get<ChatsListRepositoryImpl>() }
-    single<ChatSettingsRepository> { get<ChatsListRepositoryImpl>() }
-    single<ChatCreationRepository> { get<ChatsListRepositoryImpl>() }
+    @Provides
+    @Singleton
+    fun provideChatsCacheDataSource(chatCache: ChatCache): ChatsCacheDataSource = chatCache
 
-    factory<SettingsRemoteDataSource> {
-        TdSettingsRemoteDataSource(
-            gateway = get(),
-            fileQueue = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideChatRemoteSource(
+        @ApplicationContext context: Context,
+        gateway: TelegramGateway,
+    ): ChatRemoteSource = TdChatRemoteSource(
+        gateway = gateway,
+        connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager,
+    )
 
-    single<SettingsCacheDataSource> {
-        InMemorySettingsCacheDataSource()
-    }
+    @Provides
+    fun provideProxyRemoteDataSource(gateway: TelegramGateway): ProxyRemoteDataSource =
+        TdProxyRemoteDataSource(gateway = gateway)
 
-    single<NotificationSettingsRepository> {
-        NotificationSettingsRepositoryImpl(
-            remote = get(),
-            cache = get(),
-            chatsRemote = get(),
-            updates = get(),
-            scope = get(),
-            dispatchers = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideChatMapper(stringProvider: StringProvider) = ChatMapper(stringProvider)
 
-    single<SessionRepository> {
-        SessionRepositoryImpl(
-            remote = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideStorageMapper(stringProvider: StringProvider) = StorageMapper(stringProvider)
 
-    single<WallpaperRepository> {
-        WallpaperRepositoryImpl(
-            remote = get(),
-            updates = get(),
-            wallpaperDao = get(),
-            dispatchers = get(),
-            scope = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideNetworkMapper(
+        stringProvider: StringProvider,
+        storageMapper: StorageMapper,
+    ) = NetworkMapper(stringProvider, storageMapper)
 
-    single<StorageRepository> {
-        StorageRepositoryImpl(
-            remote = get(),
-            cache = get(),
-            chatsRemote = get(),
-            dispatchers = get(),
-            storageMapper = get(),
-            stringProvider = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideMessageFileApi(fileDownloadQueue: FileDownloadQueue): MessageFileApi =
+        MessageFileCoordinator(fileDownloadQueue = fileDownloadQueue)
 
-    single<NetworkStatisticsRepository> {
-        NetworkStatisticsRepositoryImpl(
-            remote = get(),
-            networkMapper = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideUserCacheDataSource(chatCache: ChatCache): UserCacheDataSource = chatCache
 
-    single<AttachMenuBotRepository> {
-        AttachMenuBotRepositoryImpl(
-            remote = get(),
-            cache = get(),
-            cacheProvider = get(),
-            updates = get(),
-            dispatchers = get(),
-            attachBotDao = get(),
-            scope = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideTdFileHelper(
+        @ApplicationContext context: Context,
+        fileApi: MessageFileApi,
+        appPreferences: AppPreferencesProvider,
+        chatCache: ChatCache,
+    ) = TdFileHelper(
+        connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager,
+        fileApi = fileApi,
+        appPreferences = appPreferences,
+        cache = chatCache,
+    )
 
-    single<PollRepository> {
-        PollRepositoryImpl()
-    }
+    @Provides
+    @Singleton
+    internal fun provideCustomEmojiLoader(
+        gateway: TelegramGateway,
+        fileApi: MessageFileApi,
+        fileUpdateHandler: FileUpdateHandler,
+        fileHelper: TdFileHelper,
+    ) = CustomEmojiLoader(
+        gateway = gateway,
+        fileApi = fileApi,
+        fileUpdateHandler = fileUpdateHandler,
+        fileHelper = fileHelper,
+    )
 
-    single<MessageRemoteDataSource> {
-        TdMessageRemoteDataSource(
-            gateway = get(),
-            messageMapper = get(),
-            userRepository = get(),
-            chatListRepository = get(),
-            cache = get(),
-            pollRepository = get(),
-            fileDownloadQueue = get(),
-            fileUpdateHandler = get(),
-            dispatcherProvider = get(),
-            scope = get()
-        )
-    }
+    @Provides
+    @Singleton
+    internal fun provideWebPageMapper(
+        fileHelper: TdFileHelper,
+        appPreferences: AppPreferencesProvider,
+    ) = WebPageMapper(
+        fileHelper = fileHelper,
+        appPreferences = appPreferences,
+    )
 
-    single<MessageRepository> {
-        MessageRepositoryImpl(
-            context = androidContext(),
-            gateway = get(),
-            updates = get(),
-            messageMapper = get(),
-            messageRemoteDataSource = get(),
-            cache = get(),
-            fileHelper = get(),
-            dispatcherProvider = get(),
-            scope = get(),
-            fileDataSource = get(),
-            chatLocalDataSource = get(),
-            userLocalDataSource = get(),
-            fileUpdateHandler = get(),
-            textCompositionStyleDao = get()
-        )
-    }
+    @Provides
+    @Singleton
+    internal fun provideMessageContentMapper(
+        fileHelper: TdFileHelper,
+        appPreferences: AppPreferencesProvider,
+        customEmojiLoader: CustomEmojiLoader,
+        webPageMapper: WebPageMapper,
+        scope: CoroutineScope,
+    ) = MessageContentMapper(
+        fileHelper = fileHelper,
+        appPreferences = appPreferences,
+        customEmojiLoader = customEmojiLoader,
+        webPageMapper = webPageMapper,
+        scope = scope,
+    )
 
-    single<InlineBotRepository> { get<MessageRepository>() }
-    single<ChatEventLogRepository> { get<MessageRepository>() }
-    single<MessageAiRepository> { get<MessageRepository>() }
-    single<PaymentRepository> { get<MessageRepository>() }
-    single<FileRepository> { get<MessageRepository>() }
-    single<WebAppRepository> { get<MessageRepository>() }
+    @Provides
+    @Singleton
+    internal fun provideMessageSenderResolver(
+        gateway: TelegramGateway,
+        userRepository: UserRepository,
+        chatInfoRepository: ChatInfoRepository,
+        cache: ChatCache,
+        fileHelper: TdFileHelper,
+    ) = MessageSenderResolver(
+        gateway = gateway,
+        userRepository = userRepository,
+        chatInfoRepository = chatInfoRepository,
+        cache = cache,
+        fileHelper = fileHelper,
+    )
 
-    factory<StickerRemoteSource> {
-        TdStickerRemoteSource(
-            gateway = get()
-        )
-    }
+    @Provides
+    @Singleton
+    internal fun provideMessagePersistenceMapper(
+        cache: ChatCache,
+        fileHelper: TdFileHelper,
+    ) = MessagePersistenceMapper(
+        cache = cache,
+        fileHelper = fileHelper,
+    )
 
-    factory<GifRemoteSource> {
-        TdGifRemoteSource(
-            gateway = get()
-        )
-    }
+    @Provides
+    @Singleton
+    internal fun provideMessageMapper(
+        gateway: TelegramGateway,
+        userRepository: UserRepository,
+        cache: ChatCache,
+        fileHelper: TdFileHelper,
+        senderResolver: MessageSenderResolver,
+        contentMapper: MessageContentMapper,
+        persistenceMapper: MessagePersistenceMapper,
+        customEmojiLoader: CustomEmojiLoader,
+    ) = MessageMapper(
+        gateway = gateway,
+        userRepository = userRepository,
+        cache = cache,
+        fileHelper = fileHelper,
+        senderResolver = senderResolver,
+        contentMapper = contentMapper,
+        persistenceMapper = persistenceMapper,
+        customEmojiLoader = customEmojiLoader,
+    )
 
-    factory<EmojiRemoteSource> {
-        TdEmojiRemoteSource(
-            gateway = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideConnectionManager(
+        @ApplicationContext context: Context,
+        chatRemoteSource: ChatRemoteSource,
+        proxyRemoteSource: ProxyRemoteDataSource,
+        updates: UpdateDispatcher,
+        appPreferences: AppPreferencesProvider,
+        dispatchers: DispatcherProvider,
+        scope: CoroutineScope,
+    ) = ConnectionManager(
+        chatRemoteSource = chatRemoteSource,
+        proxyRemoteSource = proxyRemoteSource,
+        updates = updates,
+        appPreferences = appPreferences,
+        dispatchers = dispatchers,
+        connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager,
+        scope = scope,
+    )
 
-    single {
-        FileMessageRegistry()
-    }
+    @Provides
+    @Singleton
+    fun provideChatsListRepositoryImpl(
+        @ApplicationContext context: Context,
+        remoteDataSource: ChatsRemoteDataSource,
+        chatRemoteSource: ChatRemoteSource,
+        updates: UpdateDispatcher,
+        appPreferences: AppPreferencesProvider,
+        cacheProvider: CacheProvider,
+        dispatchers: DispatcherProvider,
+        cache: ChatCache,
+        chatMapper: ChatMapper,
+        messageMapper: MessageMapper,
+        gateway: TelegramGateway,
+        scope: CoroutineScope,
+        chatLocalDataSource: ChatLocalDataSource,
+        connectionManager: ConnectionManager,
+        searchHistoryDao: SearchHistoryDao,
+        chatFolderDao: ChatFolderDao,
+        userFullInfoDao: UserFullInfoDao,
+        fileQueue: FileDownloadQueue,
+        fileUpdateHandler: FileUpdateHandler,
+        stringProvider: StringProvider,
+    ) = ChatsListRepositoryImpl(
+        remoteDataSource = remoteDataSource,
+        chatRemoteSource = chatRemoteSource,
+        updates = updates,
+        appPreferences = appPreferences,
+        cacheProvider = cacheProvider,
+        dispatchers = dispatchers,
+        cache = cache,
+        chatMapper = chatMapper,
+        messageMapper = messageMapper,
+        gateway = gateway,
+        scope = scope,
+        chatLocalDataSource = chatLocalDataSource,
+        connectionManager = connectionManager,
+        databaseFile = context.getDatabasePath("monogram_db"),
+        searchHistoryDao = searchHistoryDao,
+        chatFolderDao = chatFolderDao,
+        userFullInfoDao = userFullInfoDao,
+        fileQueue = fileQueue,
+        fileUpdateHandler = fileUpdateHandler,
+        stringProvider = stringProvider,
+    )
 
-    single {
-        FileDownloadQueue(
-            gateway = get(),
-            registry = get(),
-            cache = get(),
-            scope = get(),
-            dispatcherProvider = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideChatListRepository(repository: ChatsListRepositoryImpl): ChatListRepository = repository
 
-    single {
-        FileUpdateHandler(
-            registry = get(),
-            queue = get(),
-            updates = get(),
-            scope = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideChatFolderRepository(repository: ChatsListRepositoryImpl): ChatFolderRepository = repository
 
-    single {
-        StickerFileManager(
-            localDataSource = get(),
-            fileQueue = get(),
-            fileUpdateHandler = get(),
-            dispatchers = get(),
-            scope = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideChatOperationsRepository(repository: ChatsListRepositoryImpl): ChatOperationsRepository = repository
 
-    single<StickerRepository> {
-        StickerRepositoryImpl(
-            remote = get(),
-            fileManager = get(),
-            updates = get(),
-            cacheProvider = get(),
-            dispatchers = get(),
-            localDataSource = get(),
-            scope = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideChatSearchRepository(repository: ChatsListRepositoryImpl): ChatSearchRepository = repository
 
-    single<GifRepository> {
-        GifRepositoryImpl(
-            remote = get(),
-            cacheProvider = get(),
-            stickerFileManager = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideForumTopicsRepository(repository: ChatsListRepositoryImpl): ForumTopicsRepository = repository
 
-    single<EmojiRepository> {
-        EmojiRepositoryImpl(
-            remote = get(),
-            localDataSource = get(),
-            cacheProvider = get(),
-            dispatchers = get(),
-            context = androidContext(),
-            scope = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideChatSettingsRepository(repository: ChatsListRepositoryImpl): ChatSettingsRepository = repository
 
-    factory<PrivacyRemoteDataSource> {
-        TdPrivacyRemoteDataSource(
-            gateway = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideChatCreationRepository(repository: ChatsListRepositoryImpl): ChatCreationRepository = repository
 
-    single<PrivacyRepository> {
-        PrivacyRepositoryImpl(
-            remote = get(),
-            updates = get()
-        )
-    }
+    @Provides
+    fun provideSettingsRemoteDataSource(
+        gateway: TelegramGateway,
+        fileQueue: FileDownloadQueue,
+    ): SettingsRemoteDataSource = TdSettingsRemoteDataSource(
+        gateway = gateway,
+        fileQueue = fileQueue,
+    )
 
-    single {
-        LinkParser()
-    }
+    @Provides
+    @Singleton
+    fun provideSettingsCacheDataSource(): SettingsCacheDataSource = InMemorySettingsCacheDataSource()
 
-    single<LinkHandlerRepository> {
-        LinkHandlerRepositoryImpl(get(), get(), get(), get(), get())
-    }
+    @Provides
+    @Singleton
+    fun provideNotificationSettingsRepository(
+        remote: SettingsRemoteDataSource,
+        cache: SettingsCacheDataSource,
+        chatsRemote: ChatsRemoteDataSource,
+        updates: UpdateDispatcher,
+        scope: CoroutineScope,
+        dispatchers: DispatcherProvider,
+    ): NotificationSettingsRepository = NotificationSettingsRepositoryImpl(
+        remote = remote,
+        cache = cache,
+        chatsRemote = chatsRemote,
+        updates = updates,
+        scope = scope,
+        dispatchers = dispatchers,
+    )
 
-    single<StreamingRepository> {
-        StreamingRepositoryImpl(
-            fileDataSource = get(),
-            updates = get(),
-            scope = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideSessionRepository(remote: SettingsRemoteDataSource): SessionRepository =
+        SessionRepositoryImpl(remote = remote)
 
-    factory<ExternalProxyDataSource> {
-        HttpExternalProxyDataSource(
-            dispatchers = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideWallpaperRepository(
+        remote: SettingsRemoteDataSource,
+        updates: UpdateDispatcher,
+        wallpaperDao: WallpaperDao,
+        dispatchers: DispatcherProvider,
+        scope: CoroutineScope,
+    ): WallpaperRepository = WallpaperRepositoryImpl(
+        remote = remote,
+        updates = updates,
+        wallpaperDao = wallpaperDao,
+        dispatchers = dispatchers,
+        scope = scope,
+    )
 
-    single<ExternalProxyRepository> {
-        ExternalProxyRepositoryImpl(
-            remote = get(),
-            externalSource = get(),
-            dispatchers = get(),
-            appPreferences = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideStorageRepository(
+        remote: SettingsRemoteDataSource,
+        cache: SettingsCacheDataSource,
+        chatsRemote: ChatsRemoteDataSource,
+        dispatchers: DispatcherProvider,
+        storageMapper: StorageMapper,
+        stringProvider: StringProvider,
+    ): StorageRepository = StorageRepositoryImpl(
+        remote = remote,
+        cache = cache,
+        chatsRemote = chatsRemote,
+        dispatchers = dispatchers,
+        storageMapper = storageMapper,
+        stringProvider = stringProvider,
+    )
 
-    single<LocationRepository> {
-        LocationRepositoryImpl(
-            remote = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideNetworkStatisticsRepository(
+        remote: SettingsRemoteDataSource,
+        networkMapper: NetworkMapper,
+    ): NetworkStatisticsRepository = NetworkStatisticsRepositoryImpl(
+        remote = remote,
+        networkMapper = networkMapper,
+    )
 
-    factory<UpdateRemoteDateSource> {
-        TdUpdateRemoteDataSource(
-            gateway = get()
-        )
-    }
+    @Provides
+    @Singleton
+    fun provideAttachMenuBotRepository(
+        remote: SettingsRemoteDataSource,
+        cache: SettingsCacheDataSource,
+        cacheProvider: CacheProvider,
+        updates: UpdateDispatcher,
+        dispatchers: DispatcherProvider,
+        attachBotDao: AttachBotDao,
+        scope: CoroutineScope,
+    ): AttachMenuBotRepository = AttachMenuBotRepositoryImpl(
+        remote = remote,
+        cache = cache,
+        cacheProvider = cacheProvider,
+        updates = updates,
+        dispatchers = dispatchers,
+        attachBotDao = attachBotDao,
+        scope = scope,
+    )
 
-    single<UpdateRepository> {
-        UpdateRepositoryImpl(
-            context = androidContext(),
-            remote = get(),
-            fileQueue = get(),
-            fileUpdateHandler = get(),
-            authRepository = get(),
-            scope = get(),
-        )
-    }
+    @Provides
+    @Singleton
+    fun providePollRepository(): PollRepository = PollRepositoryImpl()
 
-    single(createdAtStart = true) { TdNotificationManager(androidContext(), get(), get(), get(), get(), get()) }
+    @Provides
+    @Singleton
+    fun provideMessageRemoteDataSource(
+        gateway: TelegramGateway,
+        messageMapper: MessageMapper,
+        userRepository: UserRepository,
+        chatListRepository: ChatListRepository,
+        cache: ChatCache,
+        pollRepository: PollRepository,
+        fileDownloadQueue: FileDownloadQueue,
+        fileUpdateHandler: FileUpdateHandler,
+        dispatcherProvider: DispatcherProvider,
+        scope: CoroutineScope,
+    ): MessageRemoteDataSource = TdMessageRemoteDataSource(
+        gateway = gateway,
+        messageMapper = messageMapper,
+        userRepository = userRepository,
+        chatListRepository = chatListRepository,
+        cache = cache,
+        pollRepository = pollRepository,
+        fileDownloadQueue = fileDownloadQueue,
+        fileUpdateHandler = fileUpdateHandler,
+        dispatcherProvider = dispatcherProvider,
+        scope = scope,
+    )
+
+    @Provides
+    @Singleton
+    fun provideMessageRepository(
+        @ApplicationContext context: Context,
+        gateway: TelegramGateway,
+        updates: UpdateDispatcher,
+        messageMapper: MessageMapper,
+        messageRemoteDataSource: MessageRemoteDataSource,
+        cache: ChatCache,
+        fileHelper: TdFileHelper,
+        dispatcherProvider: DispatcherProvider,
+        scope: CoroutineScope,
+        fileDataSource: FileDataSource,
+        chatLocalDataSource: ChatLocalDataSource,
+        userLocalDataSource: UserLocalDataSource,
+        fileUpdateHandler: FileUpdateHandler,
+        textCompositionStyleDao: TextCompositionStyleDao,
+    ): MessageRepository = MessageRepositoryImpl(
+        context = context,
+        gateway = gateway,
+        updates = updates,
+        messageMapper = messageMapper,
+        messageRemoteDataSource = messageRemoteDataSource,
+        cache = cache,
+        fileHelper = fileHelper,
+        dispatcherProvider = dispatcherProvider,
+        scope = scope,
+        fileDataSource = fileDataSource,
+        chatLocalDataSource = chatLocalDataSource,
+        userLocalDataSource = userLocalDataSource,
+        fileUpdateHandler = fileUpdateHandler,
+        textCompositionStyleDao = textCompositionStyleDao,
+    )
+
+    @Provides
+    @Singleton
+    fun provideInlineBotRepository(repository: MessageRepository): InlineBotRepository = repository
+
+    @Provides
+    @Singleton
+    fun provideChatEventLogRepository(repository: MessageRepository): ChatEventLogRepository = repository
+
+    @Provides
+    @Singleton
+    fun provideMessageAiRepository(repository: MessageRepository): MessageAiRepository = repository
+
+    @Provides
+    @Singleton
+    fun providePaymentRepository(repository: MessageRepository): PaymentRepository = repository
+
+    @Provides
+    @Singleton
+    fun provideFileRepository(repository: MessageRepository): FileRepository = repository
+
+    @Provides
+    @Singleton
+    fun provideWebAppRepository(repository: MessageRepository): WebAppRepository = repository
+
+    @Provides
+    fun provideStickerRemoteSource(gateway: TelegramGateway): StickerRemoteSource =
+        TdStickerRemoteSource(gateway = gateway)
+
+    @Provides
+    fun provideGifRemoteSource(gateway: TelegramGateway): GifRemoteSource =
+        TdGifRemoteSource(gateway = gateway)
+
+    @Provides
+    fun provideEmojiRemoteSource(gateway: TelegramGateway): EmojiRemoteSource =
+        TdEmojiRemoteSource(gateway = gateway)
+
+    @Provides
+    @Singleton
+    fun provideFileMessageRegistry() = FileMessageRegistry()
+
+    @Provides
+    @Singleton
+    fun provideFileDownloadQueue(
+        gateway: TelegramGateway,
+        registry: FileMessageRegistry,
+        cache: ChatCache,
+        scope: CoroutineScope,
+        dispatcherProvider: DispatcherProvider,
+    ) = FileDownloadQueue(
+        gateway = gateway,
+        registry = registry,
+        cache = cache,
+        scope = scope,
+        dispatcherProvider = dispatcherProvider,
+    )
+
+    @Provides
+    @Singleton
+    fun provideFileUpdateHandler(
+        registry: FileMessageRegistry,
+        queue: FileDownloadQueue,
+        updates: UpdateDispatcher,
+        scope: CoroutineScope,
+    ) = FileUpdateHandler(
+        registry = registry,
+        queue = queue,
+        updates = updates,
+        scope = scope,
+    )
+
+    @Provides
+    @Singleton
+    fun provideStickerFileManager(
+        localDataSource: StickerLocalDataSource,
+        fileQueue: FileDownloadQueue,
+        fileUpdateHandler: FileUpdateHandler,
+        dispatchers: DispatcherProvider,
+        scope: CoroutineScope,
+    ) = StickerFileManager(
+        localDataSource = localDataSource,
+        fileQueue = fileQueue,
+        fileUpdateHandler = fileUpdateHandler,
+        dispatchers = dispatchers,
+        scope = scope,
+    )
+
+    @Provides
+    @Singleton
+    fun provideStickerRepository(
+        remote: StickerRemoteSource,
+        fileManager: StickerFileManager,
+        updates: UpdateDispatcher,
+        cacheProvider: CacheProvider,
+        dispatchers: DispatcherProvider,
+        localDataSource: StickerLocalDataSource,
+        scope: CoroutineScope,
+    ): StickerRepository = StickerRepositoryImpl(
+        remote = remote,
+        fileManager = fileManager,
+        updates = updates,
+        cacheProvider = cacheProvider,
+        dispatchers = dispatchers,
+        localDataSource = localDataSource,
+        scope = scope,
+    )
+
+    @Provides
+    @Singleton
+    fun provideGifRepository(
+        remote: GifRemoteSource,
+        cacheProvider: CacheProvider,
+        stickerFileManager: StickerFileManager,
+    ): GifRepository = GifRepositoryImpl(
+        remote = remote,
+        cacheProvider = cacheProvider,
+        stickerFileManager = stickerFileManager,
+    )
+
+    @Provides
+    @Singleton
+    fun provideEmojiRepository(
+        @ApplicationContext context: Context,
+        remote: EmojiRemoteSource,
+        localDataSource: StickerLocalDataSource,
+        cacheProvider: CacheProvider,
+        dispatchers: DispatcherProvider,
+        scope: CoroutineScope,
+    ): EmojiRepository = EmojiRepositoryImpl(
+        remote = remote,
+        localDataSource = localDataSource,
+        cacheProvider = cacheProvider,
+        dispatchers = dispatchers,
+        context = context,
+        scope = scope,
+    )
+
+    @Provides
+    fun providePrivacyRemoteDataSource(gateway: TelegramGateway): PrivacyRemoteDataSource =
+        TdPrivacyRemoteDataSource(gateway = gateway)
+
+    @Provides
+    @Singleton
+    fun providePrivacyRepository(
+        remote: PrivacyRemoteDataSource,
+        updates: UpdateDispatcher,
+    ): PrivacyRepository = PrivacyRepositoryImpl(
+        remote = remote,
+        updates = updates,
+    )
+
+    @Provides
+    @Singleton
+    fun provideLinkParser() = LinkParser()
+
+    @Provides
+    @Singleton
+    fun provideLinkHandlerRepository(
+        parser: LinkParser,
+        remote: LinkRemoteDataSource,
+        chatListRepository: ChatListRepository,
+        chatInfoRepository: ChatInfoRepository,
+        fileQueue: FileDownloadQueue,
+    ): LinkHandlerRepository = LinkHandlerRepositoryImpl(
+        parser,
+        remote,
+        chatListRepository,
+        chatInfoRepository,
+        fileQueue,
+    )
+
+    @Provides
+    @Singleton
+    fun provideStreamingRepository(
+        fileDataSource: FileDataSource,
+        updates: UpdateDispatcher,
+        scope: CoroutineScope,
+    ): StreamingRepository = StreamingRepositoryImpl(
+        fileDataSource = fileDataSource,
+        updates = updates,
+        scope = scope,
+    )
+
+    @Provides
+    fun provideExternalProxyDataSource(dispatchers: DispatcherProvider): ExternalProxyDataSource =
+        HttpExternalProxyDataSource(dispatchers = dispatchers)
+
+    @Provides
+    @Singleton
+    fun provideExternalProxyRepository(
+        remote: ProxyRemoteDataSource,
+        externalSource: ExternalProxyDataSource,
+        dispatchers: DispatcherProvider,
+        appPreferences: AppPreferencesProvider,
+    ): ExternalProxyRepository = ExternalProxyRepositoryImpl(
+        remote = remote,
+        externalSource = externalSource,
+        appPreferences = appPreferences,
+        dispatchers = dispatchers,
+    )
+
+    @Provides
+    @Singleton
+    fun provideLocationRepository(remote: NominatimRemoteDataSource): LocationRepository =
+        LocationRepositoryImpl(remote = remote)
+
+    @Provides
+    fun provideUpdateRemoteDateSource(gateway: TelegramGateway): UpdateRemoteDateSource =
+        TdUpdateRemoteDataSource(gateway = gateway)
+
+    @Provides
+    @Singleton
+    fun provideUpdateRepository(
+        @ApplicationContext context: Context,
+        remote: UpdateRemoteDateSource,
+        fileQueue: FileDownloadQueue,
+        fileUpdateHandler: FileUpdateHandler,
+        authRepository: AuthRepository,
+        scope: CoroutineScope,
+    ): UpdateRepository = UpdateRepositoryImpl(
+        context = context,
+        remote = remote,
+        fileQueue = fileQueue,
+        fileUpdateHandler = fileUpdateHandler,
+        authRepository = authRepository,
+        scope = scope,
+    )
+
+    @Provides
+    @Singleton
+    fun provideOfflineWarmup(
+        scope: CoroutineScope,
+        dispatchers: DispatcherProvider,
+        gateway: TelegramGateway,
+        chatDao: ChatDao,
+        messageDao: MessageDao,
+        userDao: UserDao,
+        userFullInfoDao: UserFullInfoDao,
+        chatFullInfoDao: ChatFullInfoDao,
+        messageMapper: MessageMapper,
+        chatCache: ChatCache,
+        stickerRepository: StickerRepository,
+    ) = OfflineWarmup(
+        scope = scope,
+        dispatchers = dispatchers,
+        gateway = gateway,
+        chatDao = chatDao,
+        messageDao = messageDao,
+        userDao = userDao,
+        userFullInfoDao = userFullInfoDao,
+        chatFullInfoDao = chatFullInfoDao,
+        messageMapper = messageMapper,
+        chatCache = chatCache,
+        stickerRepository = stickerRepository,
+    )
+
+    @Provides
+    @Singleton
+    fun provideSponsorSyncManager(
+        scope: CoroutineScope,
+        gateway: TelegramGateway,
+        sponsorDao: SponsorDao,
+        authRepository: AuthRepository,
+    ) = SponsorSyncManager(
+        scope = scope,
+        gateway = gateway,
+        sponsorDao = sponsorDao,
+        authRepository = authRepository,
+    )
+
+    @Provides
+    @Singleton
+    fun provideSponsorRepository(sponsorSyncManager: SponsorSyncManager): SponsorRepository =
+        SponsorRepositoryImpl(sponsorSyncManager = sponsorSyncManager)
+
+    @Provides
+    @Singleton
+    fun provideTdNotificationManager(
+        @ApplicationContext context: Context,
+        gateway: TelegramGateway,
+        appPreferences: AppPreferencesProvider,
+        notificationSettingsRepository: NotificationSettingsRepository,
+        notificationSettingDao: NotificationSettingDao,
+        fileQueue: FileDownloadQueue,
+    ) = TdNotificationManager(
+        context,
+        gateway,
+        appPreferences,
+        notificationSettingsRepository,
+        notificationSettingDao,
+        fileQueue,
+    )
 }
