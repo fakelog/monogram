@@ -28,6 +28,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import org.monogram.domain.models.webapp.PageBlockCaption
 import org.monogram.domain.models.webapp.RichText
+import org.monogram.presentation.core.util.safeLocalMediaModel
 import org.monogram.presentation.features.chats.currentChat.components.VideoStickerPlayer
 import org.monogram.presentation.features.chats.currentChat.components.VideoType
 import org.monogram.presentation.features.chats.currentChat.components.chats.normalizeUrl
@@ -112,9 +113,10 @@ fun AsyncImageWithDownload(
     }
 
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
-        if (currentPath != null) {
+        val safeModel = remember(currentPath) { safeLocalMediaModel(currentPath) }
+        if (safeModel != null) {
             AsyncImage(
-                model = currentPath,
+                model = safeModel,
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = contentScale

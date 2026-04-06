@@ -23,6 +23,7 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import org.monogram.presentation.R
 import org.monogram.presentation.core.util.generateColorFromHash
+import org.monogram.presentation.core.util.safeLocalMediaModel
 import org.monogram.presentation.features.chats.currentChat.components.AvatarPlayer
 import java.io.File
 
@@ -206,19 +207,12 @@ private data class AvatarImageSource(
 )
 
 private fun resolveAvatarImageSource(path: String): AvatarImageSource {
-    return if (path.startsWith("http") || path.startsWith("content:") || path.startsWith("file:")) {
-        AvatarImageSource(model = path, cacheKey = path)
-    } else {
-        val file = File(path)
-        if (file.exists()) {
-            AvatarImageSource(
-                model = file,
-                cacheKey = "${file.absolutePath}:${file.lastModified()}:${file.length()}"
-            )
-        } else {
-            AvatarImageSource(model = path, cacheKey = path)
-        }
-    }
+    val localModel = safeLocalMediaModel(path) ?: return AvatarImageSource(model = Unit, cacheKey = null)
+    val file = localModel as? File
+    return AvatarImageSource(
+        model = localModel,
+        cacheKey = if (file != null) "${file.absolutePath}:${file.lastModified()}:${file.length()}" else path
+    )
 }
 
 private fun resolveAvatarPath(primaryPath: String?, fallbackPath: String?): String? {
@@ -226,8 +220,8 @@ private fun resolveAvatarPath(primaryPath: String?, fallbackPath: String?): Stri
         .distinct()
     if (candidates.isEmpty()) return null
 
-    val existingCandidates = candidates.filter { File(it).exists() }
-    val source = existingCandidates.ifEmpty { candidates }
+    val source = candidates.filter { safeLocalMediaModel(it) != null }
+    if (source.isEmpty()) return null
 
     return source.firstOrNull { it.endsWith(".mp4", ignoreCase = true) } ?: source.firstOrNull()
 }

@@ -2,7 +2,7 @@
 set -e
 
 # Set ANDROID_NDK_HOME here
-# ANDROID_NDK_HOME=
+ANDROID_NDK_HOME=/home/fakelog/Android/Sdk/ndk/27.0.12077973/
 
 if [ -z "$ANDROID_NDK_HOME" ]; then
     echo "Error: ANDROID_NDK_HOME is not set."

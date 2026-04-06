@@ -33,6 +33,7 @@ import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
 import org.monogram.presentation.core.util.IDownloadUtils
 import org.monogram.presentation.core.util.namespacedCacheKey
+import org.monogram.presentation.core.util.safeLocalMediaModel
 import org.monogram.presentation.features.chats.currentChat.AutoDownloadSuppression
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
@@ -67,7 +68,8 @@ fun PhotoMessageBubble(
     val tailCorner = 2.dp
 
     var stablePath by remember(msg.id, content.fileId) { mutableStateOf(content.path) }
-    val hasPath = !stablePath.isNullOrBlank()
+    val safeMediaModel = remember(stablePath) { safeLocalMediaModel(stablePath) }
+    val hasPath = safeMediaModel != null
     val photoCacheKey = remember(stablePath, content.fileId) {
         namespacedCacheKey("chat_photo:${content.fileId}", stablePath)
     }
@@ -221,7 +223,7 @@ fun PhotoMessageBubble(
                         if (hasPath) {
                             AsyncImage(
                                 model = ImageRequest.Builder(context)
-                                    .data(stablePath)
+                                    .data(safeMediaModel)
                                     .apply {
                                         photoCacheKey?.let {
                                             memoryCacheKey(it)

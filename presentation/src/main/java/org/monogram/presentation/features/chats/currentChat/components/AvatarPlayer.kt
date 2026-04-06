@@ -29,6 +29,7 @@ import coil3.request.crossfade
 import coil3.video.VideoFrameDecoder
 import coil3.video.videoFrameMillis
 import org.monogram.presentation.core.util.LocalVideoPlayerPool
+import org.monogram.presentation.core.util.safeLocalMediaModel
 import java.io.File
 
 @OptIn(UnstableApi::class)
@@ -43,16 +44,21 @@ fun AvatarPlayer(
         return
     }
     val videoPlayerPool = LocalVideoPlayerPool.current
+    val safeModel = remember(path) { safeLocalMediaModel(path) }
+    if (safeModel == null) {
+        Box(modifier = modifier)
+        return
+    }
 
     val context = LocalContext.current
     var isVideoFrameReady by remember { mutableStateOf(false) }
 
     val exoPlayer = remember(path) {
         videoPlayerPool.acquire().apply {
-            val uri = if (path.startsWith("http") || path.startsWith("content") || path.startsWith("file")) {
-                path.toUri()
-            } else {
-                Uri.fromFile(File(path))
+            val uri = when (safeModel) {
+                is Uri -> safeModel
+                is File -> Uri.fromFile(safeModel)
+                else -> path.toUri()
             }
             val mediaSource = videoPlayerPool.getMediaSourceFactory()
                 .createMediaSource(MediaItem.fromUri(uri))
@@ -106,7 +112,7 @@ fun AvatarPlayer(
         ) {
             AsyncImage(
                 model = ImageRequest.Builder(context)
-                    .data(path)
+                    .data(safeModel)
                     .decoderFactory(VideoFrameDecoder.Factory())
                     .videoFrameMillis(0)
                     .memoryCacheKey(path)

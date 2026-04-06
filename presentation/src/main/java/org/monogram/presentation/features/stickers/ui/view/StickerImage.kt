@@ -10,6 +10,7 @@ import coil3.compose.SubcomposeAsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import org.monogram.presentation.core.util.namespacedCacheKey
+import org.monogram.presentation.core.util.safeLocalMediaModel
 
 @Composable
 fun StickerImage(
@@ -32,10 +33,11 @@ fun StickerImage(
     }
 
     val cacheKey = remember(path) { namespacedCacheKey("sticker", path) }
+    val safeModel = remember(path) { safeLocalMediaModel(path) } ?: return
 
     SubcomposeAsyncImage(
         model = ImageRequest.Builder(LocalContext.current)
-            .data(path)
+            .data(safeModel)
             .apply {
                 cacheKey?.let {
                     memoryCacheKey(it)

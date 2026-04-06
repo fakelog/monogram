@@ -50,6 +50,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.monogram.presentation.R
 import org.monogram.presentation.core.util.IDownloadUtils
+import org.monogram.presentation.core.util.safeLocalMediaModel
 import org.monogram.presentation.features.stickers.ui.menu.MenuOptionRow
 
 @Composable
@@ -423,20 +424,26 @@ fun ZoomableImage(
 ) {
     val applyTransforms = pageIndex == pagerIndex
     val context = LocalContext.current
+    val safeModel = remember(data) {
+        when (data) {
+            is String -> safeLocalMediaModel(data)
+            else -> data
+        }
+    } ?: return
 
-    var isHighResLoading by remember(data) { mutableStateOf(true) }
+    var isHighResLoading by remember(safeModel) { mutableStateOf(true) }
 
-    val thumbnailRequest = remember(data) {
+    val thumbnailRequest = remember(safeModel) {
         ImageRequest.Builder(context)
-            .data(data)
+            .data(safeModel)
             .size(100, 100)
             .crossfade(true)
             .build()
     }
 
-    val fullRequest = remember(data) {
+    val fullRequest = remember(safeModel) {
         ImageRequest.Builder(context)
-            .data(data)
+            .data(safeModel)
             .size(Size.ORIGINAL)
             .precision(Precision.EXACT)
             .crossfade(true)
