@@ -130,6 +130,7 @@ fun ChatContent(
     val isComments = state.rootMessage != null
     val isForumList = state.viewAsTopics && state.currentTopicId == null
     var showScrollToBottomButton by remember { mutableStateOf(false) }
+    var lastAutoScrollMessageCount by remember(state.chatId, state.currentTopicId) { mutableIntStateOf(0) }
 
     val isAnyViewerOpen = state.fullScreenImages != null ||
             state.fullScreenVideoPath != null ||
@@ -358,8 +359,13 @@ fun ChatContent(
 
     // Auto-scroll to bottom when new messages arrive and we are already at the bottom
     val messageCount = groupedMessages.size
-    LaunchedEffect(messageCount, state.isLatestLoaded) {
-        if (isComments) return@LaunchedEffect
+    LaunchedEffect(messageCount, state.isLatestLoaded, isComments) {
+        val previousMessageCount = lastAutoScrollMessageCount
+        lastAutoScrollMessageCount = messageCount
+
+        if (isComments || previousMessageCount == 0 || messageCount <= previousMessageCount) {
+            return@LaunchedEffect
+        }
 
         val isAtBottomNow = scrollState.isAtBottom(
             isComments = isComments,
