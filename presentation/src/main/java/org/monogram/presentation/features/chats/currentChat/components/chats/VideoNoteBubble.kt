@@ -113,10 +113,16 @@ fun VideoNoteBubble(
                 .padding(4.dp)
         ) {
             val context = LocalContext.current
+            val localPath = content.path
             var isPlaying by remember { mutableStateOf(false) }
             var isMuted by remember { mutableStateOf(true) }
             var progress by remember { mutableFloatStateOf(0f) }
             var hasError by remember { mutableStateOf(false) }
+            val localFile = remember(localPath) { localPath?.let(::File) }
+
+            LaunchedEffect(localPath) {
+                hasError = false
+            }
 
 
             Box(
@@ -125,10 +131,10 @@ fun VideoNoteBubble(
                     .clip(CircleShape)
                     .background(Color.Black)
                     .onGloballyPositioned { notePosition = it.positionInWindow() }
-                    .pointerInput(content.path, content.isDownloading, hasError) {
+                    .pointerInput(localPath, content.isDownloading, hasError) {
                         detectTapGestures(
                             onTap = {
-                                if (content.path != null && !hasError) {
+                                if (localPath != null && !hasError) {
                                     isMuted = !isMuted
                                 } else if (content.isDownloading) {
                                     onCancelDownload(content.fileId)
@@ -140,8 +146,8 @@ fun VideoNoteBubble(
                         )
                     }
             ) {
-                if (content.path != null && File(content.path).exists() && !hasError) {
-                    val exoPlayer = remember {
+                if (localFile?.exists() == true && !hasError) {
+                    val exoPlayer = remember(context, localPath) {
                         val extractorsFactory = DefaultExtractorsFactory()
                             .setConstantBitrateSeekingEnabled(true)
                             .setMp4ExtractorFlags(Mp4Extractor.FLAG_WORKAROUND_IGNORE_EDIT_LISTS)
@@ -149,16 +155,16 @@ fun VideoNoteBubble(
                         ExoPlayer.Builder(context)
                             .setMediaSourceFactory(DefaultMediaSourceFactory(context, extractorsFactory))
                             .build().apply {
-                            repeatMode = Player.REPEAT_MODE_ONE
+                                repeatMode = Player.REPEAT_MODE_ONE
                                 val mediaItem = MediaItem.Builder()
-                                    .setUri(Uri.parse(content.path))
-                                    .setMimeType(getMimeType(content.path!!) ?: MimeTypes.VIDEO_MP4)
+                                    .setUri(Uri.fromFile(localFile))
+                                    .setMimeType(getMimeType(localFile.path) ?: MimeTypes.VIDEO_MP4)
                                     .build()
                                 setMediaItem(mediaItem)
-                            prepare()
-                            volume = 0f
-                            playWhenReady = true
-                        }
+                                prepare()
+                                volume = 0f
+                                playWhenReady = true
+                            }
                     }
 
                     DisposableEffect(exoPlayer) {
@@ -210,6 +216,11 @@ fun VideoNoteBubble(
                                     layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
                                 }
                             },
+                            update = { view ->
+                                if (view.player !== exoPlayer) {
+                                    view.player = exoPlayer
+                                }
+                            },
                             modifier = Modifier.matchParentSize()
                         )
                     }
@@ -248,7 +259,7 @@ fun VideoNoteBubble(
                 }
 
 
-                if (content.path != null && isPlaying && !hasError) {
+                if (localPath != null && isPlaying && !hasError) {
                     Box(modifier = Modifier
                         .align(Alignment.TopCenter)
                         .padding(top = 16.dp)) {

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lint>
+    <!-- TdApi.java is generated third-party code and currently too large for lint to parse. -->
+    <issue id="LintError">
+        <ignore path="src/main/java/org/drinkless/tdlib/TdApi.java" />
+    </issue>
+</lint>
