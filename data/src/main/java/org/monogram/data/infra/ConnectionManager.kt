@@ -2,15 +2,24 @@ package org.monogram.data.infra
 
 import android.net.ConnectivityManager
 import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.NetworkRequest
-import android.net.Uri
 import android.os.Build
 import android.util.Log
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.drinkless.tdlib.TdApi
 import org.monogram.core.DispatcherProvider
 import org.monogram.data.core.coRunCatching
@@ -19,6 +28,11 @@ import org.monogram.data.datasource.remote.ProxyRemoteDataSource
 import org.monogram.data.gateway.UpdateDispatcher
 import org.monogram.domain.repository.AppPreferencesProvider
 import org.monogram.domain.repository.ConnectionStatus
+import org.monogram.domain.repository.ProxyNetworkMode
+import org.monogram.domain.repository.ProxyNetworkRule
+import org.monogram.domain.repository.ProxyNetworkType
+import org.monogram.domain.repository.ProxyUnavailableFallback
+import org.monogram.domain.repository.defaultProxyNetworkMode
 import kotlin.random.Random
 
 class ConnectionManager(
@@ -30,7 +44,7 @@ class ConnectionManager(
     private val connectivityManager: ConnectivityManager,
     private val scope: CoroutineScope
 ) {
-    private val TAG = "ConnectionManager"
+    private val tag = "ConnectionManager"
 
     private val _connectionStateFlow = MutableStateFlow<ConnectionStatus>(ConnectionStatus.Connecting)
     val connectionStateFlow = _connectionStateFlow.asStateFlow()
@@ -38,12 +52,12 @@ class ConnectionManager(
     private var retryJob: Job? = null
     private var proxyModeWatcherJob: Job? = null
     private var autoBestJob: Job? = null
-    private var telegaSwitchJob: Job? = null
     private var watchdogJob: Job? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var reconnectAttempts = 0
     private var lastRetryAtMs = 0L
     private var lastStateChangeAtMs = System.currentTimeMillis()
+    private val proxyRuleMutex = Mutex()
 
     private val minRetryIntervalMs = 1_200L
     private val maxRetryDelayMs = 60_000L
@@ -85,7 +99,7 @@ class ConnectionManager(
         val previous = _connectionStateFlow.value
         if (previous != status) {
             lastStateChangeAtMs = System.currentTimeMillis()
-            Log.d(TAG, "Connection state changed: $previous -> $status ($source)")
+            Log.d(tag, "Connection state changed: $previous -> $status ($source)")
         }
 
         _connectionStateFlow.value = status
@@ -133,19 +147,22 @@ class ConnectionManager(
         lastRetryAtMs = now
         reconnectAttempts++
 
-        Log.d(TAG, "Reconnect attempt #$reconnectAttempts ($reason), state=${_connectionStateFlow.value}")
+        Log.d(
+            tag,
+            "Reconnect attempt #$reconnectAttempts ($reason), state=${_connectionStateFlow.value}"
+        )
 
         val networkTypeUpdated = coRunCatching {
             withContext(dispatchers.io) {
                 chatRemoteSource.setNetworkType()
             }
         }.getOrElse { error ->
-            Log.e(TAG, "Reconnect attempt failed", error)
+            Log.e(tag, "Reconnect attempt failed", error)
             false
         }
 
         if (!networkTypeUpdated) {
-            Log.w(TAG, "Reconnect attempt did not update network type")
+            Log.w(tag, "Reconnect attempt did not update network type")
         }
 
         coRunCatching {
@@ -175,17 +192,16 @@ class ConnectionManager(
     }
 
     private suspend fun maybeAdjustProxyOnFailures(force: Boolean = false) {
-        val isTelegaEnabled = appPreferences.isTelegaProxyEnabled.value
         val isAutoBestEnabled = appPreferences.isAutoBestProxyEnabled.value
-        if (!isAutoBestEnabled && !isTelegaEnabled) return
+        if (!isAutoBestEnabled) return
 
         if (!force) {
             if (reconnectAttempts < 4) return
             if (reconnectAttempts % 3 != 0) return
         }
 
-        coRunCatching { selectBestProxy(telegaOnly = isTelegaEnabled) }
-            .onFailure { Log.e(TAG, "Proxy fallback failed during reconnect", it) }
+        coRunCatching { applyNetworkProxyRule("reconnect_failures") }
+            .onFailure { Log.e(tag, "Proxy fallback failed during reconnect", it) }
     }
 
     private fun calculateRetryDelayMs(status: ConnectionStatus, attempts: Int): Long {
@@ -205,56 +221,103 @@ class ConnectionManager(
         proxyModeWatcherJob?.cancel()
         proxyModeWatcherJob = scope.launch {
             appPreferences.enabledProxyId.value?.let { proxyId ->
-                if (!proxyRemoteSource.enableProxy(proxyId)) {
+                if (!enableProxy(proxyId, getCurrentNetworkType(), "startup_restore")) {
                     appPreferences.setEnabledProxyId(null)
-                    coRunCatching { selectBestProxy(telegaOnly = appPreferences.isTelegaProxyEnabled.value) }
                 }
             }
 
-            combine(
-                appPreferences.isAutoBestProxyEnabled,
-                appPreferences.isTelegaProxyEnabled
-            ) { autoBest, telega -> autoBest to telega }
-                .distinctUntilChanged()
-                .collect { (autoBest, telega) ->
-                    autoBestJob?.cancel()
-                    telegaSwitchJob?.cancel()
+            applyNetworkProxyRule("startup")
 
-                    if (telega) {
-                        telegaSwitchJob = launchTelegaSwitchLoop()
-                    } else if (autoBest) {
+            launch {
+                appPreferences.proxyNetworkRules.collect {
+                    applyNetworkProxyRule("rules_changed")
+                }
+            }
+
+            launch {
+                appPreferences.proxyUnavailableFallback.collect {
+                    applyNetworkProxyRule("fallback_changed")
+                }
+            }
+
+            launch {
+                appPreferences.isAutoBestProxyEnabled.collect { autoBest ->
+                    autoBestJob?.cancel()
+
+                    if (autoBest) {
                         autoBestJob = launchAutoBestLoop()
                     }
                 }
+            }
         }
     }
 
     private fun launchAutoBestLoop(): Job = scope.launch(dispatchers.default) {
         while (isActive) {
-            coRunCatching { selectBestProxy(telegaOnly = false) }
-                .onFailure { Log.e(TAG, "Error selecting best proxy", it) }
+            coRunCatching { applyNetworkProxyRule("auto_best_loop") }
+                .onFailure { Log.e(tag, "Error applying proxy rule in auto loop", it) }
             delay(300_000L)
         }
     }
 
-    private fun launchTelegaSwitchLoop(): Job = scope.launch(dispatchers.default) {
-        while (isActive) {
-            coRunCatching { selectBestProxy(telegaOnly = true) }
-                .onFailure { Log.e(TAG, "Error selecting telega proxy", it) }
-            delay(60_000L)
+    private suspend fun applyNetworkProxyRule(reason: String) {
+        proxyRuleMutex.withLock {
+            val networkType = getCurrentNetworkType()
+            val rule = appPreferences.proxyNetworkRules.value[networkType]
+                ?: ProxyNetworkRule(defaultProxyNetworkMode(networkType))
+
+            when (rule.mode) {
+                ProxyNetworkMode.DIRECT -> {
+                    disableProxyIfNeeded("$reason:direct")
+                }
+
+                ProxyNetworkMode.BEST_PROXY -> {
+                    selectBestProxy(networkType, "$reason:best")
+                }
+
+                ProxyNetworkMode.LAST_USED -> {
+                    val target = rule.lastUsedProxyId
+                    if (target != null && enableProxy(
+                            target,
+                            networkType,
+                            "$reason:last_used"
+                        )
+                    ) return
+                    handleUnavailableFallback(networkType, "$reason:last_used")
+                }
+
+                ProxyNetworkMode.SPECIFIC_PROXY -> {
+                    val target = rule.specificProxyId
+                    if (target != null && enableProxy(
+                            target,
+                            networkType,
+                            "$reason:specific"
+                        )
+                    ) return
+                    handleUnavailableFallback(networkType, "$reason:specific")
+                }
+            }
         }
     }
 
-    private suspend fun selectBestProxy(telegaOnly: Boolean = false) {
-        val allProxies = proxyRemoteSource.getProxies()
-        val proxies = if (telegaOnly) {
-            val telegaIds = getTelegaIdentifiers()
-            allProxies.filter { "${it.server}:${it.port}" in telegaIds }
-        } else {
-            allProxies
-        }
+    private suspend fun handleUnavailableFallback(networkType: ProxyNetworkType, reason: String) {
+        when (appPreferences.proxyUnavailableFallback.value) {
+            ProxyUnavailableFallback.BEST_PROXY -> selectBestProxy(
+                networkType,
+                "$reason:fallback_best"
+            )
 
-        if (proxies.isEmpty()) return
+            ProxyUnavailableFallback.DIRECT -> disableProxyIfNeeded("$reason:fallback_direct")
+            ProxyUnavailableFallback.KEEP_CURRENT -> Unit
+        }
+    }
+
+    private suspend fun selectBestProxy(networkType: ProxyNetworkType, reason: String): Boolean {
+        val proxies = proxyRemoteSource.getProxies()
+        if (proxies.isEmpty()) {
+            disableProxyIfNeeded("$reason:no_proxies")
+            return false
+        }
 
         val best = coroutineScope {
             proxies.map { proxy ->
@@ -265,40 +328,70 @@ class ConnectionManager(
                     proxy to ping
                 }
             }.awaitAll()
-        }.minByOrNull { it.second } ?: return
+        }.minByOrNull { it.second } ?: return false
 
         if (best.second == Long.MAX_VALUE) {
-            Log.w(TAG, "All candidate proxies are unreachable, switching to direct connection")
-            coRunCatching {
-                proxyRemoteSource.disableProxy()
-                appPreferences.setEnabledProxyId(null)
-            }.onFailure { Log.e(TAG, "Failed to switch to direct connection", it) }
-            return
+            Log.w(tag, "All proxies are unreachable, switching to direct connection")
+            disableProxyIfNeeded("$reason:all_unreachable")
+            return false
         }
 
         val currentEnabled = proxies.find { it.isEnabled }
         if (best.first.id != currentEnabled?.id) {
-            Log.d(TAG, "Switching to better proxy: ${best.first.server}:${best.first.port} (ping: ${best.second}ms)")
-            if (proxyRemoteSource.enableProxy(best.first.id)) {
-                appPreferences.setEnabledProxyId(best.first.id)
-            }
+            Log.d(
+                tag,
+                "Switching to best proxy ${best.first.server}:${best.first.port} (${best.second}ms) ($reason)"
+            )
+            return enableProxy(best.first.id, networkType, "$reason:switch")
         }
+
+        appPreferences.setLastUsedProxyIdForNetwork(networkType, best.first.id)
+        return true
     }
 
-    private fun getTelegaIdentifiers(): Set<String> {
-        return appPreferences.telegaProxyUrls.value.mapNotNull { parseTelegaIdentifier(it) }.toSet()
+    private suspend fun enableProxy(
+        proxyId: Int,
+        networkType: ProxyNetworkType,
+        reason: String
+    ): Boolean {
+        if (appPreferences.enabledProxyId.value == proxyId) {
+            appPreferences.setLastUsedProxyIdForNetwork(networkType, proxyId)
+            return true
+        }
+
+        val enabled = coRunCatching {
+            withContext(dispatchers.io) {
+                proxyRemoteSource.enableProxy(proxyId)
+            }
+        }.getOrDefault(false)
+
+        if (enabled) {
+            appPreferences.setEnabledProxyId(proxyId)
+            appPreferences.setLastUsedProxyIdForNetwork(networkType, proxyId)
+        } else {
+            Log.w(tag, "Failed to enable proxy $proxyId ($reason)")
+        }
+
+        return enabled
     }
 
-    private fun parseTelegaIdentifier(url: String): String? {
-        val normalized = url.replace("t.me/proxy", "tg://proxy")
-        val uri = runCatching { Uri.parse(normalized) }.getOrNull()
-        val server = uri?.getQueryParameter("server")
-        val port = uri?.getQueryParameter("port") ?: "443"
-        if (!server.isNullOrBlank()) return "$server:$port"
+    private suspend fun disableProxyIfNeeded(reason: String): Boolean {
+        if (appPreferences.enabledProxyId.value == null) return true
 
-        val serverMatch = Regex("server=([^&]+)").find(url)?.groupValues?.get(1)
-        val regexPort = Regex("port=([^&]+)").find(url)?.groupValues?.get(1) ?: "443"
-        return serverMatch?.let { "$it:$regexPort" }
+        val disabled = coRunCatching {
+            withContext(dispatchers.io) {
+                proxyRemoteSource.disableProxy()
+            }
+            true
+        }.getOrDefault(false)
+
+        if (disabled) {
+            appPreferences.setEnabledProxyId(null)
+        } else {
+            Log.w(tag, "Failed to disable proxy ($reason)")
+        }
+
+        return disabled
     }
 
     private fun startWatchdog() {
@@ -342,7 +435,7 @@ class ConnectionManager(
             }
             true
         }.getOrElse {
-            Log.w(TAG, "Failed to register network callback", it)
+            Log.w(tag, "Failed to register network callback", it)
             false
         }
 
@@ -353,8 +446,31 @@ class ConnectionManager(
 
     private fun onNetworkChanged(reason: String) {
         scope.launch(dispatchers.default) {
+            applyNetworkProxyRule("network_$reason")
             runReconnectAttempt("network_$reason", force = true)
             syncConnectionStateFromTdlib("network_$reason")
+        }
+    }
+
+    private fun getCurrentNetworkType(): ProxyNetworkType {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val active = connectivityManager.activeNetwork ?: return ProxyNetworkType.OTHER
+            val capabilities =
+                connectivityManager.getNetworkCapabilities(active) ?: return ProxyNetworkType.OTHER
+            when {
+                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> ProxyNetworkType.VPN
+                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> ProxyNetworkType.WIFI
+                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> ProxyNetworkType.MOBILE
+                else -> ProxyNetworkType.OTHER
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            when (connectivityManager.activeNetworkInfo?.type) {
+                ConnectivityManager.TYPE_VPN -> ProxyNetworkType.VPN
+                ConnectivityManager.TYPE_WIFI -> ProxyNetworkType.WIFI
+                ConnectivityManager.TYPE_MOBILE -> ProxyNetworkType.MOBILE
+                else -> ProxyNetworkType.OTHER
+            }
         }
     }
 
@@ -362,7 +478,7 @@ class ConnectionManager(
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val active = connectivityManager.activeNetwork ?: return false
             val capabilities = connectivityManager.getNetworkCapabilities(active) ?: return false
-            capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
         } else {
             @Suppress("DEPRECATION")
             connectivityManager.activeNetworkInfo?.isConnected == true

@@ -12,6 +12,7 @@ import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import org.monogram.core.DispatcherProvider
+import org.monogram.core.date.DateFormatManager
 import org.monogram.data.chats.ChatCache
 import org.monogram.data.datasource.FileDataSource
 import org.monogram.data.datasource.PlayerDataSourceFactoryImpl
@@ -185,6 +186,10 @@ object DataModule {
 
     @Provides
     @Singleton
+    fun provideNotificationExceptionDao(database: MonogramDatabase) = database.notificationExceptionDao()
+
+    @Provides
+    @Singleton
     fun provideNotificationSettingDao(database: MonogramDatabase) = database.notificationSettingDao()
 
     @Provides
@@ -252,6 +257,7 @@ object DataModule {
         scope: CoroutineScope,
         gateway: TelegramGateway,
         fileQueue: FileDownloadQueue,
+        fileObserverHub: FileObserverHub,
         keyValueDao: KeyValueDao,
         cacheProvider: CacheProvider,
     ): UserRepository = UserRepositoryImpl(
@@ -263,6 +269,7 @@ object DataModule {
         scope = scope,
         gateway = gateway,
         fileQueue = fileQueue,
+        fileObserverHub = fileObserverHub,
         keyValueDao = keyValueDao,
         cacheProvider = cacheProvider,
     )
@@ -278,14 +285,14 @@ object DataModule {
         remote: UserRemoteDataSource,
         chatLocal: ChatLocalDataSource,
         gateway: TelegramGateway,
-        updates: UpdateDispatcher,
         fileQueue: FileDownloadQueue,
+        fileObserverHub: FileObserverHub
     ): ProfilePhotoRepository = ProfilePhotoRepositoryImpl(
         remote = remote,
         chatLocal = chatLocal,
         gateway = gateway,
-        updates = updates,
         fileQueue = fileQueue,
+        fileObserverHub = fileObserverHub
     )
 
     @Provides
@@ -340,7 +347,10 @@ object DataModule {
 
     @Provides
     @Singleton
-    fun provideChatMapper(stringProvider: StringProvider) = ChatMapper(stringProvider)
+    fun provideChatMapper(
+        stringProvider: StringProvider,
+        dateFormatManager: DateFormatManager
+    ) = ChatMapper(stringProvider, dateFormatManager)
 
     @Provides
     @Singleton
@@ -577,6 +587,7 @@ object DataModule {
         remote: SettingsRemoteDataSource,
         cache: SettingsCacheDataSource,
         chatsRemote: ChatsRemoteDataSource,
+        notificationExceptionDao: NotificationExceptionDao,
         updates: UpdateDispatcher,
         scope: CoroutineScope,
         dispatchers: DispatcherProvider,
@@ -584,6 +595,7 @@ object DataModule {
         remote = remote,
         cache = cache,
         chatsRemote = chatsRemote,
+        notificationExceptionDao = notificationExceptionDao,
         updates = updates,
         scope = scope,
         dispatchers = dispatchers,
@@ -598,14 +610,14 @@ object DataModule {
     @Singleton
     fun provideWallpaperRepository(
         remote: SettingsRemoteDataSource,
-        updates: UpdateDispatcher,
         wallpaperDao: WallpaperDao,
+        fileObserverHub: FileObserverHub,
         dispatchers: DispatcherProvider,
         scope: CoroutineScope,
     ): WallpaperRepository = WallpaperRepositoryImpl(
         remote = remote,
-        updates = updates,
         wallpaperDao = wallpaperDao,
+        fileObserverHub = fileObserverHub,
         dispatchers = dispatchers,
         scope = scope,
     )
@@ -645,6 +657,7 @@ object DataModule {
         cache: SettingsCacheDataSource,
         cacheProvider: CacheProvider,
         updates: UpdateDispatcher,
+        fileObserverHub: FileObserverHub,
         dispatchers: DispatcherProvider,
         attachBotDao: AttachBotDao,
         scope: CoroutineScope,
@@ -653,6 +666,7 @@ object DataModule {
         cache = cache,
         cacheProvider = cacheProvider,
         updates = updates,
+        fileObserverHub = fileObserverHub,
         dispatchers = dispatchers,
         attachBotDao = attachBotDao,
         scope = scope,
@@ -703,7 +717,8 @@ object DataModule {
         fileDataSource: FileDataSource,
         chatLocalDataSource: ChatLocalDataSource,
         userLocalDataSource: UserLocalDataSource,
-        fileUpdateHandler: FileUpdateHandler,
+        stickerPathDao: StickerPathDao,
+        keyValueDao: KeyValueDao,
         textCompositionStyleDao: TextCompositionStyleDao,
     ): MessageRepository = MessageRepositoryImpl(
         context = context,
@@ -713,12 +728,13 @@ object DataModule {
         messageRemoteDataSource = messageRemoteDataSource,
         cache = cache,
         fileHelper = fileHelper,
+        fileDataSource = fileDataSource,
         dispatcherProvider = dispatcherProvider,
         scope = scope,
-        fileDataSource = fileDataSource,
         chatLocalDataSource = chatLocalDataSource,
         userLocalDataSource = userLocalDataSource,
-        fileUpdateHandler = fileUpdateHandler,
+        stickerPathDao = stickerPathDao,
+        keyValueDao = keyValueDao,
         textCompositionStyleDao = textCompositionStyleDao,
     )
 
@@ -896,30 +912,20 @@ object DataModule {
     @Singleton
     fun provideStreamingRepository(
         fileDataSource: FileDataSource,
-        updates: UpdateDispatcher,
-        scope: CoroutineScope,
+        fileObserverHub: FileObserverHub,
     ): StreamingRepository = StreamingRepositoryImpl(
         fileDataSource = fileDataSource,
-        updates = updates,
-        scope = scope,
+        fileObserverHub = fileObserverHub
     )
-
-    @Provides
-    fun provideExternalProxyDataSource(dispatchers: DispatcherProvider): ExternalProxyDataSource =
-        HttpExternalProxyDataSource(dispatchers = dispatchers)
 
     @Provides
     @Singleton
     fun provideExternalProxyRepository(
         remote: ProxyRemoteDataSource,
-        externalSource: ExternalProxyDataSource,
-        dispatchers: DispatcherProvider,
         appPreferences: AppPreferencesProvider,
     ): ExternalProxyRepository = ExternalProxyRepositoryImpl(
         remote = remote,
-        externalSource = externalSource,
         appPreferences = appPreferences,
-        dispatchers = dispatchers,
     )
 
     @Provides
@@ -1005,6 +1011,7 @@ object DataModule {
         notificationSettingsRepository: NotificationSettingsRepository,
         notificationSettingDao: NotificationSettingDao,
         fileQueue: FileDownloadQueue,
+        stringProvider: StringProvider
     ) = TdNotificationManager(
         context,
         gateway,
@@ -1012,5 +1019,6 @@ object DataModule {
         notificationSettingsRepository,
         notificationSettingDao,
         fileQueue,
+        stringProvider = stringProvider
     )
 }

@@ -12,6 +12,9 @@
     <string name="current_device_section">此设备</string>
     <string name="login_requests_section">登录请求</string>
     <string name="active_sessions_section">活跃会话</string>
+    <string name="sessions_login_attempt">登录尝试</string>
+    <string name="sessions_unconfirmed">未确认</string>
+    <string name="sessions_terminate_action">终止会话</string>
 
     <string name="cd_navigate_back">返回</string>
     <string name="cd_close_scanner">关闭扫描器</string>
@@ -136,7 +139,7 @@
     <string name="mini_app_default_name">小程序</string>
 
     <!-- Account Menu -->
-    <string name="app_name_dev">MonoGram Dev</string>
+    <string name="app_name_dev">MonoGram Alpha</string>
     <string name="action_add_account">添加账号</string>
     <string name="add_account_subtitle">登录另一个账号</string>
     <string name="menu_my_profile">我的个人资料</string>
@@ -152,7 +155,7 @@
     <string name="menu_help_feedback">帮助</string>
     <string name="menu_help_feedback_subtitle">常见问题与支持</string>
     <string name="privacy_policy">隐私政策</string>
-    <string name="app_version_footer_format">MonoGram Dev for Android v%1$s</string>
+    <string name="app_version_footer_format">MonoGram Alpha for Android v%1$s</string>
     <string name="unknown_user">未知用户</string>
     <string name="no_info">暂无信息</string>
     <string name="cd_show_accounts">显示账号</string>
@@ -245,7 +248,9 @@
 
     <!-- Profile -->
     <string name="unknown_title">未知</string>
-    <string name="members_count_format">%1$d 名成员</string>
+    <plurals name="members_count_format">
+        <item quantity="other">%1$d 名成员</item>
+    </plurals>
     <string name="members_online_count_format">%1$s，%2$d 人在线</string>
     <string name="not_implemented">未实现</string>
     <string name="search_not_implemented">搜索尚未实现</string>
@@ -462,7 +467,7 @@
     <!-- Proxy Settings -->
     <string name="proxy_settings_header">代理设置</string>
     <string name="refresh_pings_cd">刷新延迟</string>
-    <string name="add_proxy_button">添加代理</string>
+    <string name="add_proxy_button">添加</string>
     <string name="connection_section_header">连接</string>
     <string name="smart_switching_title">智能切换</string>
     <string name="smart_switching_subtitle">自动使用速度最快的代理</string>
@@ -471,10 +476,47 @@
     <string name="disable_proxy_title">禁用代理</string>
     <string name="connected_directly_subtitle">直接连接</string>
     <string name="switch_to_direct_subtitle">切换到直接连接</string>
-    <string name="telega_proxy_header">Telega Proxy</string>
-    <string name="telega_proxy_subtitle">Telega Proxy 曾被曝光存在流量拦截风险。MTProto 可保护消息数据不被中间人拦截，但仍请自行评估风险后使用。更多信息: t.me/telegaru</string>
-    <string name="enable_telega_proxy_title">启用 Telega Proxy</string>
-    <string name="enable_telega_proxy_subtitle">自动获取并切换到最佳代理</string>
+    <string name="proxy_network_rules_header">网络规则</string>
+    <string name="proxy_network_rules_subtitle">为每种网络类型选择代理行为</string>
+    <string name="proxy_network_wifi">Wi-Fi</string>
+    <string name="proxy_network_mobile">移动数据</string>
+    <string name="proxy_network_vpn">VPN</string>
+    <string name="proxy_network_other">其他网络</string>
+    <string name="proxy_network_mode_direct">直连</string>
+    <string name="proxy_network_mode_best">最佳代理</string>
+    <string name="proxy_network_mode_last_used">上次使用</string>
+    <string name="proxy_network_mode_specific">指定代理</string>
+    <string name="proxy_network_mode_direct_subtitle">在该网络下始终直连</string>
+    <string name="proxy_network_mode_best_subtitle">在该网络下自动选择最快可用代理</string>
+    <string name="proxy_network_mode_last_used_subtitle">在该网络下复用上次使用的代理</string>
+    <string name="proxy_network_mode_specific_subtitle">在该网络下始终使用指定代理</string>
+    <string name="proxy_specific_target_format">指定: %1$s:%2$d</string>
+    <string name="proxy_list_behavior_header">列表行为</string>
+    <string name="proxy_sort_mode_title">代理排序</string>
+    <string name="proxy_sort_mode_subtitle">选择代理列表的排序方式</string>
+    <string name="proxy_sort_mode_active_first">活动优先</string>
+    <string name="proxy_sort_mode_lowest_ping">最低延迟</string>
+    <string name="proxy_sort_mode_server_name">服务器名称</string>
+    <string name="proxy_sort_mode_proxy_type">代理类型</string>
+    <string name="proxy_sort_mode_status">状态</string>
+    <string name="proxy_unavailable_fallback_title">当所选代理不可用时</string>
+    <string name="proxy_unavailable_fallback_subtitle">指定/上次使用模式下的后备行为</string>
+    <string name="proxy_fallback_best_proxy">切换到最佳代理</string>
+    <string name="proxy_fallback_direct">切换为直连</string>
+    <string name="proxy_fallback_keep_current">保持当前状态</string>
+    <string name="hide_offline_proxies_title">隐藏离线代理</string>
+    <string name="hide_offline_proxies_subtitle">仅显示可用或未检测的代理</string>
+    <string name="proxy_export_action">导出代理</string>
+    <string name="proxy_import_action">导入代理</string>
+    <string name="proxy_export_success">代理列表已导出</string>
+    <string name="proxy_export_failed">导出代理列表失败</string>
+    <string name="proxy_import_failed">读取导入文件失败</string>
+    <string name="proxy_action_set_favorite">设为收藏</string>
+    <string name="proxy_action_remove_favorite">取消收藏</string>
+    <string name="proxy_action_copy_link">复制为链接</string>
+    <string name="proxy_action_edit">编辑代理</string>
+    <string name="proxy_action_delete">删除代理</string>
+    <string name="proxy_link_copied">代理链接已复制</string>
     <string name="refresh_list_title">刷新列表</string>
     <string name="refresh_list_subtitle">获取最新的社区代理</string>
     <string name="your_proxies_header">您的代理</string>
@@ -485,6 +527,7 @@
     <string name="remove_all_proxies_title">删除所有代理</string>
     <string name="remove_all_proxies_confirmation">此操作将从应用中删除所有已配置的代理。是否继续？</string>
     <string name="no_proxies_label">未添加代理</string>
+    <string name="no_proxies_match_filter_label">没有代理符合当前筛选条件</string>
     <string name="delete_proxy_title">删除代理</string>
     <string name="delete_proxy_confirmation_format">您确定要删除代理 %1$s 吗？</string>
     <string name="new_proxy_title">新代理</string>
@@ -494,7 +537,7 @@
     <string name="secret_hex_placeholder">密钥 (Hex)</string>
     <string name="username_optional_placeholder">用户名（选填）</string>
     <string name="password_optional_placeholder">密码（选填）</string>
-    <string name="save_changes_button">保存修改</string>
+    <string name="save_changes_button">保存</string>
     <string name="test_proxy_button">测试</string>
     <string name="test_proxy_result">测试结果</string>
     <string name="action_delete">删除</string>
@@ -557,7 +600,6 @@
     <string name="message_letter_spacing_title">字元間距</string>
     <string name="bubble_rounding_title">气泡圆角</string>
     <string name="sticker_size_title">贴纸大小</string>
-    <string name="reset_button">重置</string>
     <string name="chat_wallpaper_header">会话壁纸</string>
     <string name="reset_wallpaper_cd">重置壁纸</string>
     <string name="upload_wallpaper_cd">上传壁纸</string>
@@ -598,6 +640,8 @@
     <string name="show_link_previews_subtitle">在消息中显示链接预览</string>
     <string name="drag_to_back_title">拖拽返回</string>
     <string name="drag_to_back_subtitle">从左边缘滑动返回</string>
+    <string name="tablet_interface_title">平板界面</string>
+    <string name="tablet_interface_subtitle">在平板上使用分屏布局</string>
     <string name="two_line_label">两行显示</string>
     <string name="three_line_label">三行显示</string>
     <string name="show_photos_title">显示头像</string>
@@ -957,6 +1001,7 @@
     <string name="action_cancel">取消</string>
     <string name="action_copy">复制</string>
     <string name="action_paste">粘贴</string>
+    <string name="action_paste_image">粘贴图片</string>
     <string name="action_cut">剪切</string>
     <string name="action_select_all">全选</string>
     <string name="action_apply">应用</string>
@@ -1054,6 +1099,20 @@
     <string name="notification_service_stop">停止</string>
     <string name="notification_service_channel_name">后台服务</string>
     <string name="notification_service_channel_description">关于应用在后台运行的通知</string>
+    <string name="notification_new_message">新消息</string>
+    <string name="notification_person_me">我</string>
+    <string name="notification_summary_title_format">来自 %2$d 个聊天的 %1$d 条消息</string>
+    <string name="notification_summary_text_format">%1$d 个聊天</string>
+    <string name="notification_group_chats">聊天</string>
+    <string name="notification_group_other">其他</string>
+    <string name="notification_channel_private_name">私聊</string>
+    <string name="notification_channel_private_description">来自私聊的通知</string>
+    <string name="notification_channel_groups_name">群组</string>
+    <string name="notification_channel_groups_description">来自群组的通知</string>
+    <string name="notification_channel_channels_name">频道</string>
+    <string name="notification_channel_channels_description">来自频道的通知</string>
+    <string name="notification_channel_other_name">其他</string>
+    <string name="notification_channel_other_description">其他通知</string>
 
     <!-- Chat Mapper / Media Types -->
     <string name="chat_mapper_photo">📷 照片</string>
@@ -1247,6 +1306,12 @@
     <string name="empty_links">未找到链接</string>
     <string name="empty_gifs">未找到 GIF</string>
     <string name="label_bot_badge">机器人</string>
+    <string name="label_scam_badge">诈骗</string>
+    <string name="label_fake_badge">冒充</string>
+    <string name="unofficial_app_title">使用非官方应用</string>
+    <string name="unofficial_app_subtitle">该账号正在使用非官方 Telegram 客户端</string>
+    <string name="bot_verification_title">机器人验证</string>
+    <string name="bot_verification_subtitle">由第三方机器人验证</string>
     <string name="opening_hours_closed">已关闭</string>
     <string name="label_id">ID</string>
 
@@ -1306,6 +1371,10 @@
     <string name="statistics_vs_previous"> 与前期相比</string>
     <string name="statistics_unknown_type">未知统计类型</string>
     <string name="statistics_data_class_format">数据类: %1$s</string>
+    <string name="profile_statistics_preview_contact_format">联系人：%1$s</string>
+    <string name="profile_statistics_preview_venue_format">地点：%1$s</string>
+    <string name="profile_statistics_preview_poll_format">投票：%1$s</string>
+    <string name="profile_statistics_preview_service_message">服务消息</string>
 
     <!-- Selection: Viewer Common -->
     <string name="viewer_back">返回</string>
@@ -1551,7 +1620,6 @@
     <string name="logs_media_unsupported">不支持的消息</string>
 
     <!-- Date and Formats -->
-    <string name="format_time">HH:mm</string>
     <string name="format_duration">%1$02d:%2$02d</string>
 
     <!-- Views Count -->
@@ -1663,6 +1731,17 @@
     <string name="mini_app_permission_request">权限请求</string>
     <string name="mini_app_allow">允许</string>
     <string name="mini_app_deny">拒绝</string>
+    <string name="mini_app_permission_biometry">生物识别</string>
+    <string name="mini_app_share_contact_title">分享联系人</string>
+    <string name="mini_app_share_contact_message">允许 %1$s 访问你的电话号码吗？</string>
+    <string name="mini_app_allow_messages_title">允许消息</string>
+    <string name="mini_app_allow_messages_message">允许 %1$s 向你发送消息吗？</string>
+    <string name="mini_app_download_file_title">下载文件</string>
+    <string name="mini_app_download_file_message_generic">下载此文件吗？</string>
+    <string name="mini_app_download_file_message_named">下载 %1$s 吗？</string>
+    <string name="mini_app_biometric_auth_title">生物识别验证</string>
+    <string name="mini_app_biometric_auth_subtitle">验证身份以继续</string>
+    <string name="mini_app_request_location_access_message">允许此机器人访问你的位置吗？</string>
     <string name="mini_app_bot_permissions">机器人权限</string>
     <string name="mini_app_tos_title">服务条款</string>
     <string name="mini_app_tos_text">启动此小程序即表示您同意其服务条款和隐私政策。该机器人将能够访问您的基本个人资料信息。</string>
@@ -1876,6 +1955,9 @@
     <string name="editor_word_count">%1$d 个词</string>
     <string name="editor_reading_time">约 %1$d 分钟阅读</string>
     <string name="editor_autosave_done">草稿已自动保存</string>
+    <string name="editor_action_copy">复制</string>
+    <string name="editor_action_cut">剪切</string>
+    <string name="editor_action_paste">粘贴</string>
     <string name="editor_ai">AI</string>
     <string name="editor_ai_title">AI 编辑器</string>
     <string name="editor_ai_tab_translate">翻译</string>

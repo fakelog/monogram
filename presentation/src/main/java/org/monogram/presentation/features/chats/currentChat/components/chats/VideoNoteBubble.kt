@@ -51,6 +51,7 @@ import kotlinx.coroutines.isActive
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
 import org.monogram.presentation.core.util.getMimeType
+import org.monogram.presentation.di.LocalAppContainer
 import org.monogram.presentation.features.stickers.ui.view.shimmerEffect
 import java.io.File
 import java.io.FileNotFoundException
@@ -72,6 +73,10 @@ fun VideoNoteBubble(
 ) {
     val size = 260.dp
     var notePosition by remember { mutableStateOf(Offset.Zero) }
+
+    val appContainer = LocalAppContainer.current
+    val dateFormatManager = appContainer.utils.dateFormatManager
+    val timeFormat = dateFormatManager.getHourMinuteFormat()
 
     Column(
         modifier = modifier,
@@ -348,7 +353,7 @@ fun VideoNoteBubble(
                         Spacer(modifier = Modifier.width(4.dp))
                     }
                     Text(
-                        text = formatTime(msg.date),
+                        text = formatTime(msg.date, timeFormat),
                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                         color = Color.White
                     )

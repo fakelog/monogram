@@ -7,7 +7,6 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import org.drinkless.tdlib.TdApi
 import org.monogram.data.gateway.UpdateDispatcher
-import java.util.concurrent.ConcurrentHashMap
 
 class FileUpdateHandler(
     private val registry: FileMessageRegistry,
@@ -15,8 +14,8 @@ class FileUpdateHandler(
     private val updates: UpdateDispatcher,
     private val scope: CoroutineScope
 ) {
-    val customEmojiPaths = ConcurrentHashMap<Long, String>()
-    val fileIdToCustomEmojiId = ConcurrentHashMap<Int, Long>()
+    val customEmojiPaths = SynchronizedLruMap<Long, String>(CUSTOM_EMOJI_CACHE_SIZE)
+    val fileIdToCustomEmojiId = SynchronizedLruMap<Int, Long>(FILE_TO_EMOJI_CACHE_SIZE)
 
     private val _downloadProgress = MutableSharedFlow<Pair<Long, Float>>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     private val _downloadCompleted = MutableSharedFlow<Pair<Long, String>>(extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST)
@@ -25,12 +24,17 @@ class FileUpdateHandler(
     private val _fileDownloadCompleted =
         MutableSharedFlow<Pair<Long, String>>(extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     private val _uploadProgress = MutableSharedFlow<Pair<Long, Float>>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    private val _fileUpdates = MutableSharedFlow<TdApi.File>(
+        extraBufferCapacity = 256,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
 
     val downloadProgress = _downloadProgress.asSharedFlow()
     val downloadCompleted = _downloadCompleted.asSharedFlow()
     val fileDownloadProgress = _fileDownloadProgress.asSharedFlow()
     val fileDownloadCompleted = _fileDownloadCompleted.asSharedFlow()
     val uploadProgress = _uploadProgress.asSharedFlow()
+    val fileUpdates = _fileUpdates.asSharedFlow()
 
     init {
         scope.launch {
@@ -40,6 +44,7 @@ class FileUpdateHandler(
 
     private fun handle(file: TdApi.File) {
         queue.updateFileCache(file)
+        _fileUpdates.tryEmit(file)
 
         val downloading = file.local?.isDownloadingActive == true
         val downloadDone = file.local?.isDownloadingCompleted == true
@@ -103,5 +108,27 @@ class FileUpdateHandler(
     private fun handleCustomEmoji(fileId: Int, path: String) {
         val emojiId = fileIdToCustomEmojiId[fileId] ?: return
         customEmojiPaths[emojiId] = path
+    }
+
+    fun clearMemoryCaches() {
+        customEmojiPaths.clear()
+        fileIdToCustomEmojiId.clear()
+    }
+
+    fun memoryCacheSnapshot(): MemoryCacheSnapshot {
+        return MemoryCacheSnapshot(
+            customEmojiPathsSize = customEmojiPaths.size(),
+            fileToEmojiSize = fileIdToCustomEmojiId.size()
+        )
+    }
+
+    data class MemoryCacheSnapshot(
+        val customEmojiPathsSize: Int,
+        val fileToEmojiSize: Int
+    )
+
+    companion object {
+        private const val CUSTOM_EMOJI_CACHE_SIZE = 512
+        private const val FILE_TO_EMOJI_CACHE_SIZE = 512
     }
 }

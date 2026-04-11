@@ -11,7 +11,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.monogram.domain.repository.AppPreferencesProvider
+import org.monogram.domain.repository.ProxyNetworkMode
+import org.monogram.domain.repository.ProxyNetworkRule
+import org.monogram.domain.repository.ProxyNetworkType
+import org.monogram.domain.repository.ProxySortMode
+import org.monogram.domain.repository.ProxyUnavailableFallback
 import org.monogram.domain.repository.PushProvider
+import org.monogram.domain.repository.defaultProxyNetworkMode
 
 enum class NightMode {
     SYSTEM, LIGHT, DARK, SCHEDULED, BRIGHTNESS
@@ -315,6 +321,10 @@ class AppPreferences(
     private val _showChatListPhotos = MutableStateFlow(prefs.getBoolean(KEY_SHOW_CHAT_LIST_PHOTOS, true))
     override val showChatListPhotos: StateFlow<Boolean> = _showChatListPhotos
 
+    private val _isTabletInterfaceEnabled =
+        MutableStateFlow(prefs.getBoolean(KEY_TABLET_INTERFACE_ENABLED, true))
+    val isTabletInterfaceEnabled: StateFlow<Boolean> = _isTabletInterfaceEnabled
+
     private val _isAdBlockEnabled = MutableStateFlow(prefs.getBoolean(KEY_ADBLOCK_ENABLED, false))
     val isAdBlockEnabled: StateFlow<Boolean> = _isAdBlockEnabled
 
@@ -334,14 +344,49 @@ class AppPreferences(
     private val _isAutoBestProxyEnabled = MutableStateFlow(prefs.getBoolean(KEY_AUTO_BEST_PROXY, false))
     override val isAutoBestProxyEnabled: StateFlow<Boolean> = _isAutoBestProxyEnabled
 
-    private val _isTelegaProxyEnabled = MutableStateFlow(prefs.getBoolean(KEY_TELEGA_PROXY, false))
-    override val isTelegaProxyEnabled: StateFlow<Boolean> = _isTelegaProxyEnabled
-
-    private val _telegaProxyUrls = MutableStateFlow(prefs.getStringSet(KEY_TELEGA_PROXY_URLS, emptySet()) ?: emptySet())
-    override val telegaProxyUrls: StateFlow<Set<String>> = _telegaProxyUrls
-
     private val _preferIpv6 = MutableStateFlow(prefs.getBoolean(KEY_PREFER_IPV6, false))
     override val preferIpv6: StateFlow<Boolean> = _preferIpv6
+
+    private val _proxySortMode = MutableStateFlow(
+        runCatching {
+            ProxySortMode.valueOf(
+                prefs.getString(KEY_PROXY_SORT_MODE, ProxySortMode.LOWEST_PING.name)
+                    ?: ProxySortMode.LOWEST_PING.name
+            )
+        }.getOrDefault(ProxySortMode.LOWEST_PING)
+    )
+    override val proxySortMode: StateFlow<ProxySortMode> = _proxySortMode
+
+    private val _proxyUnavailableFallback = MutableStateFlow(
+        runCatching {
+            ProxyUnavailableFallback.valueOf(
+                prefs.getString(
+                    KEY_PROXY_UNAVAILABLE_FALLBACK,
+                    ProxyUnavailableFallback.BEST_PROXY.name
+                )
+                    ?: ProxyUnavailableFallback.BEST_PROXY.name
+            )
+        }.getOrDefault(ProxyUnavailableFallback.BEST_PROXY)
+    )
+    override val proxyUnavailableFallback: StateFlow<ProxyUnavailableFallback> =
+        _proxyUnavailableFallback
+
+    private val _hideOfflineProxies =
+        MutableStateFlow(prefs.getBoolean(KEY_HIDE_OFFLINE_PROXIES, false))
+    override val hideOfflineProxies: StateFlow<Boolean> = _hideOfflineProxies
+
+    private val _favoriteProxyId =
+        MutableStateFlow(
+            if (prefs.contains(KEY_FAVORITE_PROXY_ID)) prefs.getInt(
+                KEY_FAVORITE_PROXY_ID,
+                0
+            ) else null
+        )
+    override val favoriteProxyId: StateFlow<Int?> = _favoriteProxyId
+
+    private val _proxyNetworkRules = MutableStateFlow(readProxyNetworkRules())
+    override val proxyNetworkRules: StateFlow<Map<ProxyNetworkType, ProxyNetworkRule>> =
+        _proxyNetworkRules
 
     private val _userProxyBackups = MutableStateFlow(prefs.getStringSet(KEY_USER_PROXY_BACKUPS, emptySet()) ?: emptySet())
     override val userProxyBackups: StateFlow<Set<String>> = _userProxyBackups
@@ -377,6 +422,89 @@ class AppPreferences(
             }
         }
         setAdBlockKeywords(keywords)
+    }
+
+    private fun readProxyNetworkRules(): Map<ProxyNetworkType, ProxyNetworkRule> {
+        return ProxyNetworkType.entries.associateWith { networkType ->
+            val mode = runCatching {
+                ProxyNetworkMode.valueOf(
+                    prefs.getString(
+                        proxyModeKey(networkType),
+                        defaultProxyNetworkMode(networkType).name
+                    )
+                        ?: defaultProxyNetworkMode(networkType).name
+                )
+            }.getOrDefault(defaultProxyNetworkMode(networkType))
+
+            val specificProxyId = if (prefs.contains(proxySpecificKey(networkType))) {
+                prefs.getInt(proxySpecificKey(networkType), 0)
+            } else {
+                null
+            }
+
+            val lastUsedProxyId = if (prefs.contains(proxyLastUsedKey(networkType))) {
+                prefs.getInt(proxyLastUsedKey(networkType), 0)
+            } else {
+                null
+            }
+
+            ProxyNetworkRule(
+                mode = mode,
+                specificProxyId = specificProxyId,
+                lastUsedProxyId = lastUsedProxyId
+            )
+        }
+    }
+
+    private fun updateProxyNetworkRule(
+        networkType: ProxyNetworkType,
+        transform: (ProxyNetworkRule) -> ProxyNetworkRule
+    ) {
+        val current = _proxyNetworkRules.value[networkType] ?: ProxyNetworkRule(
+            defaultProxyNetworkMode(networkType)
+        )
+        val updated = transform(current)
+        val specificProxyId = updated.specificProxyId
+        val lastUsedProxyId = updated.lastUsedProxyId
+
+        prefs.edit().apply {
+            putString(proxyModeKey(networkType), updated.mode.name)
+            if (specificProxyId != null) {
+                putInt(proxySpecificKey(networkType), specificProxyId)
+            } else {
+                remove(proxySpecificKey(networkType))
+            }
+            if (lastUsedProxyId != null) {
+                putInt(proxyLastUsedKey(networkType), lastUsedProxyId)
+            } else {
+                remove(proxyLastUsedKey(networkType))
+            }
+        }.apply()
+
+        _proxyNetworkRules.value = _proxyNetworkRules.value.toMutableMap().apply {
+            put(networkType, updated)
+        }
+    }
+
+    private fun proxyModeKey(networkType: ProxyNetworkType): String = when (networkType) {
+        ProxyNetworkType.WIFI -> KEY_PROXY_MODE_WIFI
+        ProxyNetworkType.MOBILE -> KEY_PROXY_MODE_MOBILE
+        ProxyNetworkType.VPN -> KEY_PROXY_MODE_VPN
+        ProxyNetworkType.OTHER -> KEY_PROXY_MODE_OTHER
+    }
+
+    private fun proxySpecificKey(networkType: ProxyNetworkType): String = when (networkType) {
+        ProxyNetworkType.WIFI -> KEY_PROXY_SPECIFIC_WIFI
+        ProxyNetworkType.MOBILE -> KEY_PROXY_SPECIFIC_MOBILE
+        ProxyNetworkType.VPN -> KEY_PROXY_SPECIFIC_VPN
+        ProxyNetworkType.OTHER -> KEY_PROXY_SPECIFIC_OTHER
+    }
+
+    private fun proxyLastUsedKey(networkType: ProxyNetworkType): String = when (networkType) {
+        ProxyNetworkType.WIFI -> KEY_PROXY_LAST_USED_WIFI
+        ProxyNetworkType.MOBILE -> KEY_PROXY_LAST_USED_MOBILE
+        ProxyNetworkType.VPN -> KEY_PROXY_LAST_USED_VPN
+        ProxyNetworkType.OTHER -> KEY_PROXY_LAST_USED_OTHER
     }
 
     fun setFontSize(size: Float) {
@@ -804,6 +932,11 @@ class AppPreferences(
         _showChatListPhotos.value = enabled
     }
 
+    fun setTabletInterfaceEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_TABLET_INTERFACE_ENABLED, enabled).apply()
+        _isTabletInterfaceEnabled.value = enabled
+    }
+
     fun setAdBlockEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_ADBLOCK_ENABLED, enabled).apply()
         _isAdBlockEnabled.value = enabled
@@ -833,19 +966,45 @@ class AppPreferences(
         _isAutoBestProxyEnabled.value = enabled
     }
 
-    override fun setTelegaProxyEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_TELEGA_PROXY, enabled).apply()
-        _isTelegaProxyEnabled.value = enabled
-    }
-
-    override fun setTelegaProxyUrls(urls: Set<String>) {
-        prefs.edit().putStringSet(KEY_TELEGA_PROXY_URLS, urls).apply()
-        _telegaProxyUrls.value = urls
-    }
-
     override fun setPreferIpv6(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_PREFER_IPV6, enabled).apply()
         _preferIpv6.value = enabled
+    }
+
+    override fun setProxySortMode(mode: ProxySortMode) {
+        prefs.edit().putString(KEY_PROXY_SORT_MODE, mode.name).apply()
+        _proxySortMode.value = mode
+    }
+
+    override fun setProxyUnavailableFallback(fallback: ProxyUnavailableFallback) {
+        prefs.edit().putString(KEY_PROXY_UNAVAILABLE_FALLBACK, fallback.name).apply()
+        _proxyUnavailableFallback.value = fallback
+    }
+
+    override fun setHideOfflineProxies(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_HIDE_OFFLINE_PROXIES, enabled).apply()
+        _hideOfflineProxies.value = enabled
+    }
+
+    override fun setFavoriteProxyId(proxyId: Int?) {
+        if (proxyId != null) {
+            prefs.edit().putInt(KEY_FAVORITE_PROXY_ID, proxyId).apply()
+        } else {
+            prefs.edit().remove(KEY_FAVORITE_PROXY_ID).apply()
+        }
+        _favoriteProxyId.value = proxyId
+    }
+
+    override fun setProxyNetworkMode(networkType: ProxyNetworkType, mode: ProxyNetworkMode) {
+        updateProxyNetworkRule(networkType) { it.copy(mode = mode) }
+    }
+
+    override fun setSpecificProxyIdForNetwork(networkType: ProxyNetworkType, proxyId: Int?) {
+        updateProxyNetworkRule(networkType) { it.copy(specificProxyId = proxyId) }
+    }
+
+    override fun setLastUsedProxyIdForNetwork(networkType: ProxyNetworkType, proxyId: Int?) {
+        updateProxyNetworkRule(networkType) { it.copy(lastUsedProxyId = proxyId) }
     }
 
     override fun setUserProxyBackups(backups: Set<String>) {
@@ -958,14 +1117,18 @@ class AppPreferences(
         _isChatAnimationsEnabled.value = true
         _chatListMessageLines.value = 1
         _showChatListPhotos.value = true
+        _isTabletInterfaceEnabled.value = true
         _isAdBlockEnabled.value = false
         _adBlockKeywords.value = emptySet()
         _adBlockWhitelistedChannels.value = emptySet()
         _enabledProxyId.value = null
         _isAutoBestProxyEnabled.value = false
-        _isTelegaProxyEnabled.value = false
-        _telegaProxyUrls.value = emptySet()
         _preferIpv6.value = false
+        _proxySortMode.value = ProxySortMode.LOWEST_PING
+        _proxyUnavailableFallback.value = ProxyUnavailableFallback.BEST_PROXY
+        _hideOfflineProxies.value = false
+        _favoriteProxyId.value = null
+        _proxyNetworkRules.value = readProxyNetworkRules()
         _userProxyBackups.value = emptySet()
         _isPermissionRequested.value = false
     }
@@ -1071,6 +1234,7 @@ class AppPreferences(
         private const val KEY_CHAT_ANIMATIONS_ENABLED = "chat_animations_enabled"
         private const val KEY_CHAT_LIST_MESSAGE_LINES = "chat_list_message_lines"
         private const val KEY_SHOW_CHAT_LIST_PHOTOS = "show_chat_list_photos"
+        private const val KEY_TABLET_INTERFACE_ENABLED = "tablet_interface_enabled"
 
         private const val KEY_ADBLOCK_ENABLED = "adblock_enabled"
         private const val KEY_ADBLOCK_KEYWORDS = "adblock_keywords"
@@ -1078,9 +1242,23 @@ class AppPreferences(
 
         private const val KEY_ENABLED_PROXY_ID = "enabled_proxy_id"
         private const val KEY_AUTO_BEST_PROXY = "auto_best_proxy"
-        private const val KEY_TELEGA_PROXY = "telega_proxy"
-        private const val KEY_TELEGA_PROXY_URLS = "telega_proxy_urls"
         private const val KEY_PREFER_IPV6 = "prefer_ipv6"
+        private const val KEY_PROXY_SORT_MODE = "proxy_sort_mode"
+        private const val KEY_PROXY_UNAVAILABLE_FALLBACK = "proxy_unavailable_fallback"
+        private const val KEY_HIDE_OFFLINE_PROXIES = "hide_offline_proxies"
+        private const val KEY_FAVORITE_PROXY_ID = "favorite_proxy_id"
+        private const val KEY_PROXY_MODE_WIFI = "proxy_mode_wifi"
+        private const val KEY_PROXY_MODE_MOBILE = "proxy_mode_mobile"
+        private const val KEY_PROXY_MODE_VPN = "proxy_mode_vpn"
+        private const val KEY_PROXY_MODE_OTHER = "proxy_mode_other"
+        private const val KEY_PROXY_SPECIFIC_WIFI = "proxy_specific_wifi"
+        private const val KEY_PROXY_SPECIFIC_MOBILE = "proxy_specific_mobile"
+        private const val KEY_PROXY_SPECIFIC_VPN = "proxy_specific_vpn"
+        private const val KEY_PROXY_SPECIFIC_OTHER = "proxy_specific_other"
+        private const val KEY_PROXY_LAST_USED_WIFI = "proxy_last_used_wifi"
+        private const val KEY_PROXY_LAST_USED_MOBILE = "proxy_last_used_mobile"
+        private const val KEY_PROXY_LAST_USED_VPN = "proxy_last_used_vpn"
+        private const val KEY_PROXY_LAST_USED_OTHER = "proxy_last_used_other"
         private const val KEY_USER_PROXY_BACKUPS = "user_proxy_backups"
 
         private const val KEY_BIOMETRIC_ENABLED = "biometric_enabled"

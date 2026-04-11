@@ -12,6 +12,7 @@ import org.monogram.core.Logger
 import org.monogram.domain.managers.*
 import org.monogram.domain.repository.*
 import org.monogram.presentation.core.util.AppPreferences
+import org.monogram.presentation.core.util.DateFormatManager
 import org.monogram.presentation.core.util.IDownloadUtils
 import org.monogram.presentation.di.AppContainer
 import org.monogram.presentation.di.PreferencesContainer
@@ -96,6 +97,7 @@ private class HiltUtilsContainer(
     override val clipManager: ClipManager by lazy { entryPoint.clipManager() }
     override val dispatcherProvider: DispatcherProvider by lazy { entryPoint.dispatcherProvider() }
     override val logger: Logger by lazy { entryPoint.logger() }
+    override val dateFormatManager: DateFormatManager by lazy { entryPoint.dateFormatManager() }
 
     override fun messageDisplayer(): MessageDisplayer = entryPoint.messageDisplayer()
     override fun externalNavigator(): ExternalNavigator = entryPoint.externalNavigator()
@@ -162,6 +164,7 @@ interface AppContainerEntryPoint {
     fun clipManager(): ClipManager
     fun dispatcherProvider(): DispatcherProvider
     fun logger(): Logger
+    fun dateFormatManager(): DateFormatManager
     fun messageDisplayer(): MessageDisplayer
     fun externalNavigator(): ExternalNavigator
     fun phoneManager(): PhoneManager

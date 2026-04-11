@@ -2,9 +2,20 @@ package org.monogram.data.datasource.remote
 
 import android.os.Build
 import android.util.Log
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import org.drinkless.tdlib.TdApi
 import org.monogram.core.DispatcherProvider
 import org.monogram.data.chats.ChatCache
@@ -14,10 +25,26 @@ import org.monogram.data.infra.FileDownloadQueue
 import org.monogram.data.infra.FileUpdateHandler
 import org.monogram.data.mapper.MessageMapper
 import org.monogram.data.mapper.toApi
-import org.monogram.domain.models.*
+import org.monogram.domain.models.FileDownloadEvent
+import org.monogram.domain.models.MessageContent
+import org.monogram.domain.models.MessageDeletedEvent
+import org.monogram.domain.models.MessageDownloadEvent
+import org.monogram.domain.models.MessageEntity
+import org.monogram.domain.models.MessageEntityType
+import org.monogram.domain.models.MessageIdUpdatedEvent
+import org.monogram.domain.models.MessageModel
+import org.monogram.domain.models.MessageSendOptions
+import org.monogram.domain.models.MessageUploadProgressEvent
+import org.monogram.domain.models.MessageViewerModel
+import org.monogram.domain.models.UserModel
 import org.monogram.domain.models.webapp.ThemeParams
 import org.monogram.domain.models.webapp.WebAppInfoModel
-import org.monogram.domain.repository.*
+import org.monogram.domain.repository.ChatListRepository
+import org.monogram.domain.repository.OlderMessagesPage
+import org.monogram.domain.repository.PollRepository
+import org.monogram.domain.repository.ReadUpdate
+import org.monogram.domain.repository.SearchChatMessagesResult
+import org.monogram.domain.repository.UserRepository
 import java.util.concurrent.ConcurrentHashMap
 
 class TdMessageRemoteDataSource(
@@ -41,29 +68,31 @@ class TdMessageRemoteDataSource(
     override val messageEditedFlow = MutableSharedFlow<MessageModel>()
     override val messageReadFlow = MutableSharedFlow<ReadUpdate>(
         replay = 1,
-        extraBufferCapacity = 100,
-        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.SUSPEND
+        extraBufferCapacity = 32,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
-    override val messageUploadProgressFlow = MutableSharedFlow<Pair<Long, Float>>()
-    override val messageDownloadProgressFlow = MutableSharedFlow<Pair<Long, Float>>()
-    override val messageDownloadCancelledFlow = MutableSharedFlow<Long>()
-    override val messageDeletedFlow = MutableSharedFlow<Pair<Long, List<Long>>>(
-        extraBufferCapacity = 100,
-        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.SUSPEND
+    override val messageUploadProgressFlow = MutableSharedFlow<MessageUploadProgressEvent>()
+    override val fileDownloadFlow = MutableSharedFlow<FileDownloadEvent>(
+        extraBufferCapacity = 64,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
-    override val messageIdUpdateFlow = MutableSharedFlow<Triple<Long, Long, MessageModel>>(
-        extraBufferCapacity = 100,
-        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.SUSPEND
+    override val messageDownloadFlow = MutableSharedFlow<MessageDownloadEvent>()
+    override val messageDeletedFlow = MutableSharedFlow<MessageDeletedEvent>(
+        extraBufferCapacity = 32,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
-    override val messageDownloadCompletedFlow = MutableSharedFlow<Triple<Long, Int, String>>()
+    override val messageIdUpdateFlow = MutableSharedFlow<MessageIdUpdatedEvent>(
+        extraBufferCapacity = 32,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
     override val pinnedMessageFlow = MutableSharedFlow<Long>(
         extraBufferCapacity = 10,
-        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.SUSPEND
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     override val mediaUpdateFlow = MutableSharedFlow<Unit>(
         replay = 0,
         extraBufferCapacity = 10,
-        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
 
     enum class DownloadType { VIDEO, GIF, STICKER, VIDEO_NOTE, DEFAULT }
@@ -481,7 +510,7 @@ class TdMessageRemoteDataSource(
             this.clearDraft = true
         }
         val replyTo = if (replyToMsgId != null && replyToMsgId != 0L) TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0, "") else null
-        val topicId = if (threadId != null && threadId != 0L) TdApi.MessageTopicThread(threadId) else null
+        val topicId = resolveTopicId(chatId, threadId)
         val req = TdApi.SendMessage().apply {
             this.chatId = chatId
             this.topicId = topicId
@@ -506,7 +535,7 @@ class TdMessageRemoteDataSource(
             this.caption = TdApi.FormattedText(caption, captionEntities.toTdTextEntities(caption))
         }
         val replyTo = if (replyToMsgId != null && replyToMsgId != 0L) TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0, "") else null
-        val topicId = if (threadId != null && threadId != 0L) TdApi.MessageTopicThread(threadId) else null
+        val topicId = resolveTopicId(chatId, threadId)
         val req = TdApi.SendMessage().apply {
             this.chatId = chatId
             this.topicId = topicId
@@ -539,7 +568,7 @@ class TdMessageRemoteDataSource(
             this.caption = TdApi.FormattedText(caption, captionEntities.toTdTextEntities(caption))
         }
         val replyTo = if (replyToMsgId != null && replyToMsgId != 0L) TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0, "") else null
-        val topicId = if (threadId != null && threadId != 0L) TdApi.MessageTopicThread(threadId) else null
+        val topicId = resolveTopicId(chatId, threadId)
         val req = TdApi.SendMessage().apply {
             this.chatId = chatId
             this.topicId = topicId
@@ -570,7 +599,7 @@ class TdMessageRemoteDataSource(
             this.caption = TdApi.FormattedText(caption, captionEntities.toTdTextEntities(caption))
         }
         val replyTo = if (replyToMsgId != null && replyToMsgId != 0L) TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0, "") else null
-        val topicId = if (threadId != null && threadId != 0L) TdApi.MessageTopicThread(threadId) else null
+        val topicId = resolveTopicId(chatId, threadId)
         val req = TdApi.SendMessage().apply {
             this.chatId = chatId
             this.topicId = topicId
@@ -594,7 +623,7 @@ class TdMessageRemoteDataSource(
             this.height = 512
         }
         val replyTo = if (replyToMsgId != null && replyToMsgId != 0L) TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0, "") else null
-        val topicId = if (threadId != null && threadId != 0L) TdApi.MessageTopicThread(threadId) else null
+        val topicId = resolveTopicId(chatId, threadId)
         val req = TdApi.SendMessage().apply {
             this.chatId = chatId
             this.topicId = topicId
@@ -619,7 +648,7 @@ class TdMessageRemoteDataSource(
             this.animation = TdApi.InputFileId(gifId.toInt())
         }
         val replyTo = if (replyToMsgId != null && replyToMsgId != 0L) TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0, "") else null
-        val topicId = if (threadId != null && threadId != 0L) TdApi.MessageTopicThread(threadId) else null
+        val topicId = resolveTopicId(chatId, threadId)
         val req = TdApi.SendMessage().apply {
             this.chatId = chatId
             this.topicId = topicId
@@ -644,7 +673,7 @@ class TdMessageRemoteDataSource(
             this.caption = TdApi.FormattedText(caption, captionEntities.toTdTextEntities(caption))
         }
         val replyTo = if (replyToMsgId != null && replyToMsgId != 0L) TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0, "") else null
-        val topicId = if (threadId != null && threadId != 0L) TdApi.MessageTopicThread(threadId) else null
+        val topicId = resolveTopicId(chatId, threadId)
         val req = TdApi.SendMessage().apply {
             this.chatId = chatId
             this.topicId = topicId
@@ -683,7 +712,7 @@ class TdMessageRemoteDataSource(
             }
         }.toTypedArray()
         val replyTo = if (replyToMsgId != null && replyToMsgId != 0L) TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0, "") else null
-        val topicId = if (threadId != null && threadId != 0L) TdApi.MessageTopicThread(threadId) else null
+        val topicId = resolveTopicId(chatId, threadId)
         val req = TdApi.SendMessageAlbum().apply {
             this.chatId = chatId
             this.topicId = topicId
@@ -827,6 +856,16 @@ class TdMessageRemoteDataSource(
         return TdApi.TextEntity(start, safeLength, tdType)
     }
 
+    private suspend fun resolveTopicId(chatId: Long, threadId: Long?): TdApi.MessageTopic? {
+        if (threadId == null || threadId == 0L) return null
+        val chat = cache.getChat(chatId) ?: getChat(chatId)
+        return if (chat?.viewAsTopics == true) {
+            TdApi.MessageTopicForum(threadId.toInt())
+        } else {
+            TdApi.MessageTopicThread(threadId)
+        }
+    }
+
     private fun MessageSendOptions.toTdMessageSendOptions(): TdApi.MessageSendOptions {
         return TdApi.MessageSendOptions().apply {
             this.disableNotification = silent
@@ -927,7 +966,7 @@ class TdMessageRemoteDataSource(
         val req = TdApi.SendChatAction().apply {
             this.chatId = chatId
             this.action = action
-            this.topicId = if (messageThreadId != 0L) TdApi.MessageTopicThread(messageThreadId) else null
+            this.topicId = resolveTopicId(chatId, messageThreadId.takeIf { it != 0L })
         }
         return safeExecute(req)
     }
@@ -1086,9 +1125,7 @@ class TdMessageRemoteDataSource(
         val request = TdApi.SetChatDraftMessage().apply {
             this.chatId = chatId
             this.draftMessage = draft
-            if (threadId != null && threadId != 0L) {
-                this.topicId = TdApi.MessageTopicThread(threadId)
-            }
+            this.topicId = resolveTopicId(chatId, threadId)
         }
         safeExecute(request)
     }
@@ -1172,7 +1209,13 @@ class TdMessageRemoteDataSource(
                 scope.launch(dispatcherProvider.io) {
                     try {
                         val model = mapMessageToModel(message)
-                        messageIdUpdateFlow.emit(Triple(message.chatId, update.oldMessageId, model))
+                        messageIdUpdateFlow.emit(
+                            MessageIdUpdatedEvent(
+                                chatId = message.chatId,
+                                oldMessageId = update.oldMessageId,
+                                message = model
+                            )
+                        )
                     } catch (e: Exception) { Log.e("TdMessageRemote", "Error handling SendSucceeded", e) }
                 }
             }
@@ -1239,7 +1282,12 @@ class TdMessageRemoteDataSource(
                     scope.launch(dispatcherProvider.io) {
                         messageIds.forEach { cache.removeMessage(update.chatId, it) }
                         removeMessagesFromCache(update.chatId, messageIds)
-                        messageDeletedFlow.emit(update.chatId to messageIds)
+                        messageDeletedFlow.emit(
+                            MessageDeletedEvent(
+                                chatId = update.chatId,
+                                messageIds = messageIds
+                            )
+                        )
                     }
                 }
             }
@@ -1355,6 +1403,20 @@ class TdMessageRemoteDataSource(
         if (isDC) {
             fileDownloadQueue.notifyDownloadComplete(file.id)
             lastProgressMap.remove(file.id)
+            scope.launch {
+                fileDownloadFlow.emit(
+                    FileDownloadEvent.Completed(
+                        fileId = file.id,
+                        path = file.local?.path ?: ""
+                    )
+                )
+                fileDownloadFlow.emit(
+                    FileDownloadEvent.Progress(
+                        fileId = file.id,
+                        progress = 1.0f
+                    )
+                )
+            }
             fileUpdateHandler.fileIdToCustomEmojiId[file.id]?.let { customEmojiId ->
                 fileUpdateHandler.customEmojiPaths[customEmojiId] = file.local?.path ?: ""
             }
@@ -1362,20 +1424,26 @@ class TdMessageRemoteDataSource(
             val entries = fileIdToMessageMap[file.id]
             if (!entries.isNullOrEmpty()) {
                 scope.launch {
-                    entries.forEach { (_, messageId) ->
-                        messageDownloadCompletedFlow.emit(
-                            Triple(messageId, file.id, file.local?.path ?: "")
+                    entries.forEach { (chatId, messageId) ->
+                        messageDownloadFlow.emit(
+                            MessageDownloadEvent.Completed(
+                                chatId = chatId,
+                                messageId = messageId,
+                                fileId = file.id,
+                                path = file.local?.path ?: ""
+                            )
                         )
-                        messageDownloadProgressFlow.emit(messageId to 1.0f)
+                        messageDownloadFlow.emit(
+                            MessageDownloadEvent.Progress(
+                                chatId = chatId,
+                                messageId = messageId,
+                                fileId = file.id,
+                                progress = 1.0f
+                            )
+                        )
                     }
                 }
             } else if (fileDownloadQueue.registry.standaloneFileIds.contains(file.id)) {
-                scope.launch {
-                    messageDownloadCompletedFlow.emit(
-                        Triple(file.id.toLong(), file.id, file.local?.path ?: "")
-                    )
-                    messageDownloadProgressFlow.emit(file.id.toLong() to 1.0f)
-                }
                 fileDownloadQueue.registry.standaloneFileIds.remove(file.id)
             }
             updateMessageWithFile(file.id)
@@ -1385,15 +1453,28 @@ class TdMessageRemoteDataSource(
             val pInt = (p * 100).toInt()
             if (lastProgressMap[file.id] != pInt) {
                 lastProgressMap[file.id] = pInt
+                scope.launch {
+                    fileDownloadFlow.emit(
+                        FileDownloadEvent.Progress(
+                            fileId = file.id,
+                            progress = p
+                        )
+                    )
+                }
                 val entries = fileIdToMessageMap[file.id]
                 if (!entries.isNullOrEmpty()) {
                     scope.launch {
-                        entries.forEach { (_, messageId) ->
-                            messageDownloadProgressFlow.emit(messageId to p)
+                        entries.forEach { (chatId, messageId) ->
+                            messageDownloadFlow.emit(
+                                MessageDownloadEvent.Progress(
+                                    chatId = chatId,
+                                    messageId = messageId,
+                                    fileId = file.id,
+                                    progress = p
+                                )
+                            )
                         }
                     }
-                } else if (fileDownloadQueue.registry.standaloneFileIds.contains(file.id)) {
-                    scope.launch { messageDownloadProgressFlow.emit(file.id.toLong() to p) }
                 }
             }
         } else if (isCancelled) {
@@ -1402,12 +1483,16 @@ class TdMessageRemoteDataSource(
             val entries = fileIdToMessageMap[file.id]
             if (!entries.isNullOrEmpty()) {
                 scope.launch {
-                    entries.forEach { (_, messageId) ->
-                        messageDownloadCancelledFlow.emit(messageId)
+                    entries.forEach { (chatId, messageId) ->
+                        messageDownloadFlow.emit(
+                            MessageDownloadEvent.Cancelled(
+                                chatId = chatId,
+                                messageId = messageId,
+                                fileId = file.id
+                            )
+                        )
                     }
                 }
-            } else if (fileDownloadQueue.registry.standaloneFileIds.contains(file.id)) {
-                scope.launch { messageDownloadCancelledFlow.emit(file.id.toLong()) }
             }
         }
 
@@ -1417,8 +1502,15 @@ class TdMessageRemoteDataSource(
             val entries = fileIdToMessageMap[file.id]
             if (!entries.isNullOrEmpty()) {
                 scope.launch {
-                    entries.forEach { (_, messageId) ->
-                        messageUploadProgressFlow.emit(messageId to 1.0f)
+                    entries.forEach { (chatId, messageId) ->
+                        messageUploadProgressFlow.emit(
+                            MessageUploadProgressEvent(
+                                chatId = chatId,
+                                messageId = messageId,
+                                fileId = file.id,
+                                progress = 1.0f
+                            )
+                        )
                     }
                 }
             }
@@ -1432,8 +1524,15 @@ class TdMessageRemoteDataSource(
                 val entries = fileIdToMessageMap[file.id]
                 if (!entries.isNullOrEmpty()) {
                     scope.launch {
-                        entries.forEach { (_, messageId) ->
-                            messageUploadProgressFlow.emit(messageId to p)
+                        entries.forEach { (chatId, messageId) ->
+                            messageUploadProgressFlow.emit(
+                                MessageUploadProgressEvent(
+                                    chatId = chatId,
+                                    messageId = messageId,
+                                    fileId = file.id,
+                                    progress = p
+                                )
+                            )
                         }
                     }
                 }

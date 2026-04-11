@@ -1,5 +1,6 @@
 package org.monogram.presentation.core.util
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.text.format.DateUtils
 import androidx.compose.runtime.Composable
@@ -16,15 +17,15 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import org.monogram.domain.models.*
 import org.monogram.presentation.R
+import org.monogram.presentation.di.LocalAppContainer
 import java.text.SimpleDateFormat
 import java.util.*
 
-fun formatLastSeen(lastSeen: Long?, context: Context): String {
+fun formatLastSeen(lastSeen: Long?, context: Context, timeFormat: String): String {
     if (lastSeen == null || lastSeen <= 0L) return context.getString(R.string.last_seen_recently)
 
     val now = System.currentTimeMillis()
     val diff = now - lastSeen
-
     if (diff < 0) return context.getString(R.string.last_seen_just_now)
 
     return when {
@@ -35,12 +36,12 @@ fun formatLastSeen(lastSeen: Long?, context: Context): String {
         }
 
         DateUtils.isToday(lastSeen) -> {
-            val time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(lastSeen))
+            val time = SimpleDateFormat(timeFormat, Locale.getDefault()).format(Date(lastSeen))
             context.getString(R.string.last_seen_at, time)
         }
 
         isYesterday(lastSeen) -> {
-            val time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(lastSeen))
+            val time = SimpleDateFormat(timeFormat, Locale.getDefault()).format(Date(lastSeen))
             context.getString(R.string.last_seen_yesterday_at, time)
         }
 
@@ -57,14 +58,24 @@ fun rememberUserStatusText(user: UserModel?): String {
     if (user.type == UserTypeEnum.BOT) return stringResource(R.string.status_bot)
 
     val context = LocalContext.current
+    val appContainer = LocalAppContainer.current
+    val dateFormatManager = appContainer.utils.dateFormatManager
+    val timeFormat = dateFormatManager.getHourMinuteFormat()
+
+    val onlineText = stringResource(R.string.status_online)
+    val recentlyText = stringResource(R.string.last_seen_recently)
+    val lastWeekText = stringResource(R.string.last_seen_within_week)
+    val lastMonthText = stringResource(R.string.last_seen_within_month)
+    val longTimeAgoText = stringResource(R.string.last_seen_long_time_ago)
+
     return remember(user.userStatus, user.lastSeen) {
         when (user.userStatus) {
-            UserStatusType.ONLINE -> context.getString(R.string.status_online)
-            UserStatusType.OFFLINE -> formatLastSeen(user.lastSeen, context)
-            UserStatusType.RECENTLY -> context.getString(R.string.last_seen_recently)
-            UserStatusType.LAST_WEEK -> context.getString(R.string.last_seen_within_week)
-            UserStatusType.LAST_MONTH -> context.getString(R.string.last_seen_within_month)
-            else -> context.getString(R.string.last_seen_long_time_ago)
+            UserStatusType.ONLINE -> onlineText
+            UserStatusType.OFFLINE -> formatLastSeen(user.lastSeen, context, timeFormat)
+            UserStatusType.RECENTLY -> recentlyText
+            UserStatusType.LAST_WEEK -> lastWeekText
+            UserStatusType.LAST_MONTH -> lastMonthText
+            UserStatusType.LONG_TIME_AGO -> longTimeAgoText
         }
     }
 }
@@ -73,13 +84,13 @@ private fun isYesterday(timestamp: Long): Boolean {
     return DateUtils.isToday(timestamp + DateUtils.DAY_IN_MILLIS)
 }
 
-fun getUserStatusText(user: UserModel?, context: Context): String {
+fun getUserStatusText(user: UserModel?, context: Context, timeFormat: String): String {
     if (user == null) return context.getString(R.string.status_offline)
     if (user.type == UserTypeEnum.BOT) return context.getString(R.string.status_bot)
 
     return when (user.userStatus) {
         UserStatusType.ONLINE -> context.getString(R.string.status_online)
-        UserStatusType.OFFLINE -> formatLastSeen(user.lastSeen, context)
+        UserStatusType.OFFLINE -> formatLastSeen(user.lastSeen, context, timeFormat)
         UserStatusType.RECENTLY -> context.getString(R.string.last_seen_recently)
         UserStatusType.LAST_WEEK -> context.getString(R.string.last_seen_within_week)
         UserStatusType.LAST_MONTH -> context.getString(R.string.last_seen_within_month)

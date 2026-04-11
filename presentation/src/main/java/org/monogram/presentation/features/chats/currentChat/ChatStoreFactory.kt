@@ -167,19 +167,44 @@ class ChatStoreFactory(
 
                 is Intent.PinnedMessageClick -> component.handlePinnedMessageClick(intent.message)
                 is Intent.ShowAllPinnedMessages -> {
-                    component._state.update { it.copy(showPinnedMessagesList = true) }
+                    component._state.update {
+                        it.copy(
+                            showPinnedMessagesList = true,
+                            isLoadingPinnedMessages = true,
+                            allPinnedMessages = emptyList()
+                        )
+                    }
                     component.loadAllPinnedMessages()
                 }
-                is Intent.DismissPinnedMessages -> component._state.update { it.copy(showPinnedMessagesList = false) }
-                is Intent.ScrollToMessageConsumed -> component._state.update { it.copy(scrollToMessageId = null) }
+
+                is Intent.DismissPinnedMessages -> {
+                    component._state.update {
+                        it.copy(
+                            showPinnedMessagesList = false,
+                            isLoadingPinnedMessages = false
+                        )
+                    }
+                }
+                is Intent.ScrollToMessageConsumed,
+                is Intent.ScrollCommandConsumed -> component._state.update {
+                    if (it.pendingScrollCommand == null && it.scrollToMessageId == null) it
+                    else it.copy(scrollToMessageId = null, pendingScrollCommand = null)
+                }
                 is Intent.ScrollToBottom -> component.scrollToBottomInternal()
                 is Intent.DownloadFile -> component.handleDownloadFile(intent.fileId)
                 is Intent.DownloadHighRes -> component.handleDownloadHighRes(intent.messageId)
 
                 is Intent.CancelDownloadFile -> component.handleCancelDownloadFile(intent.fileId)
 
-                is Intent.UpdateScrollPosition -> component._state.update { it.copy(currentScrollMessageId = intent.messageId) }
-                is Intent.BottomReached -> component._state.update { it.copy(isAtBottom = intent.isAtBottom) }
+                is Intent.UpdateScrollPosition -> component._state.update {
+                    if (it.currentScrollMessageId == intent.messageId) it else it.copy(currentScrollMessageId = intent.messageId)
+                }
+                is Intent.UpdateViewport -> component._state.update {
+                    if (it.lastSavedViewport == intent.viewport) it else it.copy(lastSavedViewport = intent.viewport)
+                }
+                is Intent.BottomReached -> component._state.update {
+                    if (it.isAtBottom == intent.isAtBottom) it else it.copy(isAtBottom = intent.isAtBottom)
+                }
                 is Intent.HighlightConsumed -> component._state.update { it.copy(highlightedMessageId = null) }
                 is Intent.Typing -> { /* Handle typing */
                 }

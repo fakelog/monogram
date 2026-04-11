@@ -3,7 +3,12 @@ package org.monogram.data.repository
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.drinkless.tdlib.TdApi
@@ -14,21 +19,43 @@ import org.monogram.data.datasource.FileDataSource
 import org.monogram.data.datasource.cache.ChatLocalDataSource
 import org.monogram.data.datasource.cache.UserLocalDataSource
 import org.monogram.data.datasource.remote.MessageRemoteDataSource
+import org.monogram.data.db.dao.KeyValueDao
+import org.monogram.data.db.dao.StickerPathDao
 import org.monogram.data.db.dao.TextCompositionStyleDao
+import org.monogram.data.db.model.KeyValueEntity
 import org.monogram.data.db.model.TextCompositionStyleEntity
 import org.monogram.data.gateway.TelegramGateway
 import org.monogram.data.gateway.UpdateDispatcher
-import org.monogram.data.infra.FileUpdateHandler
 import org.monogram.data.mapper.MessageMapper
 import org.monogram.data.mapper.TdFileHelper
 import org.monogram.data.mapper.map
 import org.monogram.data.mapper.toDomain
-import org.monogram.domain.models.*
+import org.monogram.domain.models.ChatEventActionModel
+import org.monogram.domain.models.ChatEventLogFiltersModel
+import org.monogram.domain.models.ChatEventModel
+import org.monogram.domain.models.ChatPermissionsModel
+import org.monogram.domain.models.FileModel
+import org.monogram.domain.models.InlineQueryResultModel
+import org.monogram.domain.models.MessageEntity
+import org.monogram.domain.models.MessageEntityType
+import org.monogram.domain.models.MessageDownloadEvent
+import org.monogram.domain.models.MessageModel
+import org.monogram.domain.models.MessageSendOptions
+import org.monogram.domain.models.MessageSenderModel
+import org.monogram.domain.models.MessageViewerModel
+import org.monogram.domain.models.UserModel
 import org.monogram.domain.models.webapp.InstantViewModel
 import org.monogram.domain.models.webapp.InvoiceModel
 import org.monogram.domain.models.webapp.ThemeParams
 import org.monogram.domain.models.webapp.WebAppInfoModel
-import org.monogram.domain.repository.*
+import org.monogram.domain.repository.FixedTextResult
+import org.monogram.domain.repository.FormattedTextResult
+import org.monogram.domain.repository.InlineBotResultsModel
+import org.monogram.domain.repository.MessageRepository
+import org.monogram.domain.repository.OlderMessagesPage
+import org.monogram.domain.repository.ProfileMediaFilter
+import org.monogram.domain.repository.SearchChatMessagesResult
+import org.monogram.domain.repository.TextCompositionStyleModel
 import java.io.File
 
 class MessageRepositoryImpl(
@@ -44,19 +71,20 @@ class MessageRepositoryImpl(
     private val scope: CoroutineScope,
     private val chatLocalDataSource: ChatLocalDataSource,
     private val userLocalDataSource: UserLocalDataSource,
-    private val fileUpdateHandler: FileUpdateHandler,
+    private val stickerPathDao: StickerPathDao,
+    private val keyValueDao: KeyValueDao,
     private val textCompositionStyleDao: TextCompositionStyleDao
 ) : MessageRepository {
     private val _textCompositionStyles = MutableStateFlow<List<TextCompositionStyleModel>>(emptyList())
+    private val hardResetFlagKey = "cache_hard_reset_v2"
 
     override val newMessageFlow = messageRemoteDataSource.newMessageFlow
     override val senderUpdateFlow = messageMapper.senderUpdateFlow
     override val messageEditedFlow = messageRemoteDataSource.messageEditedFlow
     override val messageUploadProgressFlow = messageRemoteDataSource.messageUploadProgressFlow
-    override val messageDownloadProgressFlow = messageRemoteDataSource.messageDownloadProgressFlow
-    override val messageDownloadCancelledFlow = messageRemoteDataSource.messageDownloadCancelledFlow
+    override val fileDownloadFlow = messageRemoteDataSource.fileDownloadFlow
+    override val messageDownloadFlow = messageRemoteDataSource.messageDownloadFlow
     override val messageReadFlow = messageRemoteDataSource.messageReadFlow
-    override val messageDownloadCompletedFlow = messageRemoteDataSource.messageDownloadCompletedFlow
     override val messageDeletedFlow = messageRemoteDataSource.messageDeletedFlow
     override val messageIdUpdateFlow = messageRemoteDataSource.messageIdUpdateFlow
     override val pinnedMessageFlow = messageRemoteDataSource.pinnedMessageFlow
@@ -94,13 +122,37 @@ class MessageRepositoryImpl(
             chatLocalDataSource.deleteExpired(ninetyDaysAgo)
         }
 
-        scope.launch {
-            fileUpdateHandler.fileDownloadCompleted.collect { (fileIdLong, path) ->
-                val fileId = fileIdLong.toInt()
-                if (fileId != 0 && path.isNotBlank()) {
-                    chatLocalDataSource.updateMediaPath(fileId, path)
+        scope.launch(dispatcherProvider.io) {
+            performHardCacheResetIfNeeded()
+        }
+
+        scope.launch(dispatcherProvider.io) {
+            messageDownloadFlow.collect { event ->
+                if (event is MessageDownloadEvent.Completed && event.fileId != 0 && event.path.isNotBlank()) {
+                    chatLocalDataSource.updateMediaPath(
+                        chatId = event.chatId,
+                        messageId = event.messageId,
+                        fileId = event.fileId,
+                        path = event.path
+                    )
                 }
             }
+        }
+    }
+
+    private suspend fun performHardCacheResetIfNeeded() {
+        val alreadyCleared = keyValueDao.getValue(hardResetFlagKey)?.value == "1"
+        if (alreadyCleared) return
+
+        coRunCatching {
+            chatLocalDataSource.clearAll()
+            userLocalDataSource.clearDatabase()
+            stickerPathDao.clearAll()
+            cache.clearAll()
+            keyValueDao.insertValue(KeyValueEntity(hardResetFlagKey, "1"))
+            Log.i("MessageRepository", "One-shot hard cache reset completed")
+        }.onFailure { error ->
+            Log.e("MessageRepository", "Failed to perform hard cache reset", error)
         }
     }
 
@@ -113,7 +165,22 @@ class MessageRepositoryImpl(
 
             is TdApi.UpdateMessageContent -> {
                 val extracted = messageMapper.extractCachedContent(update.newContent)
+
+                if (update.newContent is TdApi.MessagePhoto && extracted.text.isBlank()) {
+                    val refreshed = messageRemoteDataSource.getMessage(update.chatId, update.messageId)
+                    if (refreshed != null) {
+                        chatLocalDataSource.insertMessage(
+                            messageMapper.mapToEntity(
+                                refreshed,
+                                ::resolveSenderName
+                            )
+                        )
+                        return
+                    }
+                }
+
                 chatLocalDataSource.updateMessageContent(
+                    chatId = update.chatId,
                     messageId = update.messageId,
                     content = extracted.text,
                     contentType = extracted.type,
@@ -138,6 +205,7 @@ class MessageRepositoryImpl(
 
             is TdApi.UpdateMessageInteractionInfo -> {
                 chatLocalDataSource.updateInteractionInfo(
+                    chatId = update.chatId,
                     messageId = update.messageId,
                     viewCount = update.interactionInfo?.viewCount ?: 0,
                     forwardCount = update.interactionInfo?.forwardCount ?: 0,
@@ -152,7 +220,7 @@ class MessageRepositoryImpl(
             is TdApi.UpdateDeleteMessages -> {
                 if (update.isPermanent) {
                     update.messageIds.forEach { messageId ->
-                        chatLocalDataSource.deleteMessage(messageId)
+                        chatLocalDataSource.deleteMessage(update.chatId, messageId)
                     }
                 }
             }
@@ -336,7 +404,7 @@ class MessageRepositoryImpl(
 
     override suspend fun deleteMessage(chatId: Long, messageIds: List<Long>, revoke: Boolean) {
         messageRemoteDataSource.deleteMessages(chatId, messageIds.toLongArray(), revoke)
-        messageIds.forEach { chatLocalDataSource.deleteMessage(it) }
+        messageIds.forEach { chatLocalDataSource.deleteMessage(chatId, it) }
     }
 
     override suspend fun editMessage(chatId: Long, messageId: Long, newText: String, entities: List<MessageEntity>) {
@@ -1073,11 +1141,7 @@ class MessageRepositoryImpl(
             TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0, "")
         else null
 
-        val topicId = if (threadId != null) {
-            TdApi.MessageTopicForum(threadId.toInt())
-        } else {
-            null
-        }
+        val topicId = resolveTopicId(chatId, threadId)
 
         gateway.execute(
             TdApi.SendInlineQueryResultMessage(
@@ -1090,6 +1154,20 @@ class MessageRepositoryImpl(
                 false
             )
         )
+    }
+
+    private suspend fun resolveTopicId(chatId: Long, threadId: Long?): TdApi.MessageTopic? {
+        if (threadId == null || threadId == 0L) return null
+
+        val chat = cache.getChat(chatId)
+            ?: coRunCatching { gateway.execute(TdApi.GetChat(chatId)) }.getOrNull()
+                ?.also { cache.putChat(it) }
+
+        return if (chat?.viewAsTopics == true) {
+            TdApi.MessageTopicForum(threadId.toInt())
+        } else {
+            TdApi.MessageTopicThread(threadId)
+        }
     }
 
     override suspend fun getChatEventLog(

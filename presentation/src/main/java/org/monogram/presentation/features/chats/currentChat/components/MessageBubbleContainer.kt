@@ -2,13 +2,31 @@ package org.monogram.presentation.features.chats.currentChat.components
 
 import android.content.res.Configuration
 import androidx.compose.animation.Animatable
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -18,6 +36,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toSize
@@ -28,7 +47,21 @@ import org.monogram.domain.models.MessageModel
 import org.monogram.presentation.core.ui.Avatar
 import org.monogram.presentation.core.util.IDownloadUtils
 import org.monogram.presentation.features.chats.currentChat.chatContent.shouldShowDate
-import org.monogram.presentation.features.chats.currentChat.components.chats.*
+import org.monogram.presentation.features.chats.currentChat.components.chats.AudioMessageBubble
+import org.monogram.presentation.features.chats.currentChat.components.chats.ContactMessageBubble
+import org.monogram.presentation.features.chats.currentChat.components.chats.DocumentMessageBubble
+import org.monogram.presentation.features.chats.currentChat.components.chats.GifMessageBubble
+import org.monogram.presentation.features.chats.currentChat.components.chats.LocationMessageBubble
+import org.monogram.presentation.features.chats.currentChat.components.chats.MessageViaBotAttribution
+import org.monogram.presentation.features.chats.currentChat.components.chats.PhotoMessageBubble
+import org.monogram.presentation.features.chats.currentChat.components.chats.PollMessageBubble
+import org.monogram.presentation.features.chats.currentChat.components.chats.ReplyMarkupView
+import org.monogram.presentation.features.chats.currentChat.components.chats.StickerMessageBubble
+import org.monogram.presentation.features.chats.currentChat.components.chats.TextMessageBubble
+import org.monogram.presentation.features.chats.currentChat.components.chats.VenueMessageBubble
+import org.monogram.presentation.features.chats.currentChat.components.chats.VideoMessageBubble
+import org.monogram.presentation.features.chats.currentChat.components.chats.VideoNoteBubble
+import org.monogram.presentation.features.chats.currentChat.components.chats.VoiceMessageBubble
 
 @Composable
 fun MessageBubbleContainer(
@@ -89,11 +122,39 @@ fun MessageBubbleContainer(
     }
 
     val isOutgoing = msg.isOutgoing
-    val isSameSenderAbove = remember(olderMsg?.senderId, msg.senderId, olderMsg?.date, msg.date) {
-        olderMsg?.senderId == msg.senderId && !shouldShowDate(msg, olderMsg)
+    val isSameSenderAbove = remember(
+        olderMsg?.id,
+        olderMsg?.senderId,
+        olderMsg?.senderName,
+        olderMsg?.senderCustomTitle,
+        olderMsg?.date,
+        msg.senderId,
+        msg.senderName,
+        msg.senderCustomTitle,
+        msg.date
+    ) {
+        shouldGroupSenderBlock(
+            current = msg,
+            neighbor = olderMsg,
+            dateBreak = olderMsg?.let { shouldShowDate(msg, it) } ?: true
+        )
     }
-    val isSameSenderBelow = remember(newerMsg?.senderId, msg.senderId, newerMsg?.date, msg.date) {
-        newerMsg != null && newerMsg.senderId == msg.senderId && !shouldShowDate(newerMsg, msg)
+    val isSameSenderBelow = remember(
+        newerMsg?.id,
+        newerMsg?.senderId,
+        newerMsg?.senderName,
+        newerMsg?.senderCustomTitle,
+        newerMsg?.date,
+        msg.senderId,
+        msg.senderName,
+        msg.senderCustomTitle,
+        msg.date
+    ) {
+        shouldGroupSenderBlock(
+            current = msg,
+            neighbor = newerMsg,
+            dateBreak = newerMsg?.let { shouldShowDate(it, msg) } ?: true
+        )
     }
 
     val topSpacing = if (!isSameSenderAbove) 8.dp else 2.dp
@@ -114,12 +175,22 @@ fun MessageBubbleContainer(
     var bubblePosition by remember { mutableStateOf(Offset.Zero) }
     var bubbleSize by remember { mutableStateOf(IntSize.Zero) }
 
+    val dragOffsetX = remember { Animatable(0f) }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(animatedColor.value, RoundedCornerShape(12.dp))
             .onGloballyPositioned { outerColumnPosition = it.positionInWindow() }
             .padding(top = topSpacing)
+            .offset { IntOffset(dragOffsetX.value.toInt(), 0) }
+            .fastReplyPointer(
+                canReply = canReply,
+                dragOffsetX = dragOffsetX,
+                scope = rememberCoroutineScope(),
+                onReplySwipe = { onReplySwipe(msg) },
+                maxWidth = maxWidth.value
+            )
             .pointerInput(Unit) {
                 detectTapGestures(
                     onTap = { offset ->
@@ -152,70 +223,82 @@ fun MessageBubbleContainer(
                 toProfile = toProfile
             )
 
-            Column(
-                modifier = Modifier
-                    .width(IntrinsicSize.Max)
-                    .widthIn(max = maxWidth)
-                    .onGloballyPositioned { coordinates ->
-                        bubblePosition = coordinates.positionInWindow()
-                        bubbleSize = coordinates.size
-                        if (shouldReportPosition) {
-                            onPositionChange(msg.id, bubblePosition, bubbleSize)
-                        }
-                    },
-                horizontalAlignment = if (isOutgoing) Alignment.End else Alignment.Start
+            Box(
+                modifier = Modifier.wrapContentSize()
             ) {
-                MessageContentSelector(
-                    msg = msg,
-                    newerMsg = newerMsg,
-                    isOutgoing = isOutgoing,
-                    isSameSenderAbove = isSameSenderAbove,
-                    isSameSenderBelow = isSameSenderBelow,
-                    isGroup = isGroup,
-                    fontSize = fontSize,
-                    letterSpacing = letterSpacing,
-                    bubbleRadius = bubbleRadius,
-                    stSize = stSize,
-                    autoDownloadMobile = autoDownloadMobile,
-                    autoDownloadWifi = autoDownloadWifi,
-                    autoDownloadRoaming = autoDownloadRoaming,
-                    autoDownloadFiles = autoDownloadFiles,
-                    autoplayGifs = autoplayGifs,
-                    autoplayVideos = autoplayVideos,
-                    showLinkPreviews = showLinkPreviews,
-                    onPhotoClick = onPhotoClick,
-                    onDownloadPhoto = onDownloadPhoto,
-                    onVideoClick = onVideoClick,
-                    onDocumentClick = onDocumentClick,
-                    onAudioClick = onAudioClick,
-                    onCancelDownload = onCancelDownload,
-                    onReplyClick = onReplyClick,
-                    onGoToReply = onGoToReply,
-                    onReactionClick = onReactionClick,
-                    onStickerClick = onStickerClick,
-                    onPollOptionClick = onPollOptionClick,
-                    onRetractVote = onRetractVote,
-                    onShowVoters = onShowVoters,
-                    onClosePoll = onClosePoll,
-                    onInstantViewClick = onInstantViewClick,
-                    onYouTubeClick = onYouTubeClick,
-                    toProfile = toProfile,
-                    bubblePosition = bubblePosition,
-                    bubbleSize = bubbleSize,
-                    downloadUtils = downloadUtils,
-                    isAnyViewerOpen = isAnyViewerOpen
-                )
+                Column(
+                    modifier = Modifier
+                        .width(IntrinsicSize.Max)
+                        .widthIn(max = maxWidth)
+                        .onGloballyPositioned { coordinates ->
+                            bubblePosition = coordinates.positionInWindow()
+                            bubbleSize = coordinates.size
+                            if (shouldReportPosition) {
+                                onPositionChange(msg.id, bubblePosition, bubbleSize)
+                            }
+                        },
+                    horizontalAlignment = if (isOutgoing) Alignment.End else Alignment.Start
+                ) {
+                    MessageContentSelector(
+                        msg = msg,
+                        newerMsg = newerMsg,
+                        isOutgoing = isOutgoing,
+                        isSameSenderAbove = isSameSenderAbove,
+                        isSameSenderBelow = isSameSenderBelow,
+                        isGroup = isGroup,
+                        fontSize = fontSize,
+                        letterSpacing = letterSpacing,
+                        bubbleRadius = bubbleRadius,
+                        stSize = stSize,
+                        autoDownloadMobile = autoDownloadMobile,
+                        autoDownloadWifi = autoDownloadWifi,
+                        autoDownloadRoaming = autoDownloadRoaming,
+                        autoDownloadFiles = autoDownloadFiles,
+                        autoplayGifs = autoplayGifs,
+                        autoplayVideos = autoplayVideos,
+                        showLinkPreviews = showLinkPreviews,
+                        onPhotoClick = onPhotoClick,
+                        onDownloadPhoto = onDownloadPhoto,
+                        onVideoClick = onVideoClick,
+                        onDocumentClick = onDocumentClick,
+                        onAudioClick = onAudioClick,
+                        onCancelDownload = onCancelDownload,
+                        onReplyClick = onReplyClick,
+                        onGoToReply = onGoToReply,
+                        onReactionClick = onReactionClick,
+                        onStickerClick = onStickerClick,
+                        onPollOptionClick = onPollOptionClick,
+                        onRetractVote = onRetractVote,
+                        onShowVoters = onShowVoters,
+                        onClosePoll = onClosePoll,
+                        onInstantViewClick = onInstantViewClick,
+                        onYouTubeClick = onYouTubeClick,
+                        toProfile = toProfile,
+                        bubblePosition = bubblePosition,
+                        bubbleSize = bubbleSize,
+                        downloadUtils = downloadUtils,
+                        isAnyViewerOpen = isAnyViewerOpen
+                    )
 
-                MessageReplyMarkup(
-                    msg = msg,
-                    onReplyMarkupButtonClick = onReplyMarkupButtonClick
-                )
+                    MessageReplyMarkup(
+                        msg = msg,
+                        onReplyMarkupButtonClick = onReplyMarkupButtonClick
+                    )
 
-                MessageViaBotAttribution(
-                    msg = msg,
+                    MessageViaBotAttribution(
+                        msg = msg,
+                        isOutgoing = isOutgoing,
+                        onViaBotClick = onViaBotClick,
+                        modifier = Modifier.align(if (isOutgoing) Alignment.End else Alignment.Start)
+                    )
+                }
+
+                FastReplyIndicator(
+                    modifier = Modifier
+                        .align(if (isOutgoing) Alignment.CenterEnd else Alignment.CenterStart),
+                    dragOffsetX = dragOffsetX,
                     isOutgoing = isOutgoing,
-                    onViaBotClick = onViaBotClick,
-                    modifier = Modifier.align(if (isOutgoing) Alignment.End else Alignment.Start)
+                    maxWidth = maxWidth
                 )
             }
         }

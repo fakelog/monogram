@@ -1,20 +1,32 @@
 package org.monogram.presentation.features.chats.currentChat.impl
 
 import android.util.Log
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
-import org.monogram.domain.models.*
+import kotlinx.coroutines.withContext
+import org.monogram.domain.models.MessageContent
+import org.monogram.domain.models.MessageDownloadEvent
+import org.monogram.domain.models.MessageModel
+import org.monogram.domain.models.MessageReactionModel
+import org.monogram.domain.models.MessageSendingState
+import org.monogram.domain.models.UserModel
 import org.monogram.domain.repository.ReadUpdate
 import org.monogram.presentation.features.chats.currentChat.AutoDownloadSuppression
+import org.monogram.presentation.features.chats.currentChat.ChatScrollCommand
 import org.monogram.presentation.features.chats.currentChat.DefaultChatComponent
+import org.monogram.presentation.features.chats.currentChat.ScrollAlign
 import java.io.File
 
 
 private const val PAGE_SIZE = 50
 private const val MAX_DOWNLOAD_RETRIES = 3
+private const val DEFAULT_SENDER_NAME = "User"
 
 private fun isUsableAvatarPath(path: String?): Boolean {
     if (path.isNullOrBlank()) return false
@@ -55,6 +67,33 @@ private fun mergeSenderVisuals(previous: MessageModel, incoming: MessageModel): 
         senderStatusEmojiPath = incoming.senderStatusEmojiPath ?: previous.senderStatusEmojiPath,
         reactions = incoming.reactions.ifEmpty { previous.reactions }
     )
+}
+
+private fun MessageModel.needsSenderRefresh(): Boolean {
+    if (senderId <= 0L) return false
+    val hasPlaceholderName = senderName.isBlank() || senderName == DEFAULT_SENDER_NAME
+    val hasNoAvatar = senderAvatar.isNullOrBlank() && senderPersonalAvatar.isNullOrBlank()
+    return hasPlaceholderName || hasNoAvatar
+}
+
+internal fun DefaultChatComponent.requestSenderRefreshIfNeeded(message: MessageModel) {
+    if (!message.needsSenderRefresh()) return
+    requestSenderRefresh(message.senderId)
+}
+
+internal fun DefaultChatComponent.requestSenderRefresh(senderId: Long) {
+    if (senderId <= 0L) return
+    if (!pendingSenderRefreshes.add(senderId)) return
+
+    scope.launch {
+        try {
+            repositoryMessage.invalidateSenderCache(senderId)
+            val user = userRepository.getUser(senderId) ?: return@launch
+            refreshMessagesForSender(senderId, user)
+        } finally {
+            pendingSenderRefreshes.remove(senderId)
+        }
+    }
 }
 
 private fun reactionsSemanticEqual(
@@ -134,6 +173,11 @@ private suspend fun DefaultChatComponent.updateMessagesUnsafe(
         } else {
             emptyMap()
         }
+        val previousMessagesById = if (replace) {
+            state.messages.associateBy { it.id }
+        } else {
+            emptyMap()
+        }
 
         val isComments = state.rootMessage != null
 
@@ -142,7 +186,7 @@ private suspend fun DefaultChatComponent.updateMessagesUnsafe(
 
         var hasChanges = replace
         filteredNewMessages.forEach { msg ->
-            val previous = messageMap[msg.id]
+            val previous = messageMap[msg.id] ?: previousMessagesById[msg.id]
             val mergedMessage = if (previous != null) mergeSenderVisuals(previous, msg) else msg
             val restoredMessage = if (mergedMessage.reactions.isEmpty()) {
                 val previousReactions = existingReactionsById[msg.id]
@@ -193,7 +237,8 @@ internal fun DefaultChatComponent.loadMessages(force: Boolean = false) {
             it.copy(
                 isLoading = true,
                 isOldestLoaded = false,
-                isLatestLoaded = false
+                isLatestLoaded = false,
+                pendingScrollCommand = null
             )
         }
 
@@ -201,26 +246,75 @@ internal fun DefaultChatComponent.loadMessages(force: Boolean = false) {
             val currentState = _state.value
             val threadId = currentState.currentTopicId
             val isComments = currentState.rootMessage != null
-            val savedScrollPosition = if (threadId == null) cacheProvider.getChatScrollPosition(chatId) else 0L
+            val savedViewport = cacheProvider.getChatViewport(chatId, threadId)
+            _state.update { it.copy(lastSavedViewport = savedViewport) }
+
+            val chat = chatListRepository.getChatById(chatId)
+            val firstUnreadId = chat?.lastReadInboxMessageId?.let { lastRead ->
+                if (chat.unreadCount > 0) {
+                    repositoryMessage.getMessagesNewer(chatId, lastRead, 1, threadId)
+                        .firstOrNull()?.id
+                        ?: lastRead.takeIf { it > 0L }
+                } else {
+                    null
+                }
+            }
 
             if (isComments && threadId != null) {
-                loadComments(threadId)
-            } else if (savedScrollPosition != 0L) {
-                loadAroundMessage(savedScrollPosition, threadId, shouldHighlight = false)
-            } else {
-                val chat = chatListRepository.getChatById(chatId)
-                val firstUnreadId = chat?.lastReadInboxMessageId?.let { lastRead ->
-                    if (chat.unreadCount > 0) {
-                        repositoryMessage.getMessagesNewer(chatId, lastRead, 1, threadId).firstOrNull()?.id
-                            ?: lastRead.takeIf { it > 0L }
-                    } else null
-                }
-
-                if (firstUnreadId != null) {
-                    loadAroundMessage(firstUnreadId, threadId, shouldHighlight = false)
+                val commentsAnchorId = savedViewport?.anchorMessageId
+                if (commentsAnchorId != null && !savedViewport.atBottom) {
+                    loadAroundMessage(
+                        messageId = commentsAnchorId,
+                        threadId = threadId,
+                        shouldHighlight = false,
+                        scrollCommand = ChatScrollCommand.RestoreViewport(
+                            anchorMessageId = commentsAnchorId,
+                            anchorOffsetPx = savedViewport.anchorOffsetPx,
+                            atBottom = false
+                        )
+                    )
                 } else {
-                    loadBottomMessages(threadId)
+                    loadComments(
+                        threadId = threadId,
+                        scrollCommand = ChatScrollCommand.ScrollToBottom(animated = false)
+                    )
                 }
+            } else if (firstUnreadId != null) {
+                loadAroundMessage(
+                    messageId = firstUnreadId,
+                    threadId = threadId,
+                    shouldHighlight = false,
+                    scrollCommand = ChatScrollCommand.JumpToMessage(
+                        messageId = firstUnreadId,
+                        highlight = false,
+                        align = ScrollAlign.Center,
+                        animated = false
+                    )
+                )
+            } else if (savedViewport != null) {
+                if (savedViewport.atBottom || savedViewport.anchorMessageId == null) {
+                    loadBottomMessages(
+                        threadId = threadId,
+                        scrollCommand = ChatScrollCommand.ScrollToBottom(animated = false)
+                    )
+                } else {
+                    val savedAnchorId = savedViewport.anchorMessageId ?: return@launch
+                    loadAroundMessage(
+                        messageId = savedAnchorId,
+                        threadId = threadId,
+                        shouldHighlight = false,
+                        scrollCommand = ChatScrollCommand.RestoreViewport(
+                            anchorMessageId = savedAnchorId,
+                            anchorOffsetPx = savedViewport.anchorOffsetPx,
+                            atBottom = false
+                        )
+                    )
+                }
+            } else {
+                loadBottomMessages(
+                    threadId = threadId,
+                    scrollCommand = ChatScrollCommand.ScrollToBottom(animated = false)
+                )
             }
         } catch (e: CancellationException) {
             throw e
@@ -232,7 +326,10 @@ internal fun DefaultChatComponent.loadMessages(force: Boolean = false) {
     }
 }
 
-internal suspend fun DefaultChatComponent.loadComments(threadId: Long) {
+internal suspend fun DefaultChatComponent.loadComments(
+    threadId: Long,
+    scrollCommand: ChatScrollCommand? = ChatScrollCommand.ScrollToBottom(animated = false)
+) {
     lastLoadedOlderId = 0L
     lastLoadedNewerId = 0L
     val messages = repositoryMessage.getMessagesNewer(chatId, threadId, PAGE_SIZE, threadId)
@@ -243,13 +340,20 @@ internal suspend fun DefaultChatComponent.loadComments(threadId: Long) {
             isAtBottom = false,
             isLatestLoaded = reachedEnd,
             isOldestLoaded = true,
-            scrollToMessageId = messages.firstOrNull()?.id
+            scrollToMessageId = null
         )
     }
     updateMessages(messages, replace = true)
+    refreshCachedSenderProfiles(messages)
+    if (scrollCommand != null) {
+        _state.update { it.copy(pendingScrollCommand = scrollCommand) }
+    }
 }
 
-private suspend fun DefaultChatComponent.loadBottomMessages(threadId: Long?) {
+private suspend fun DefaultChatComponent.loadBottomMessages(
+    threadId: Long?,
+    scrollCommand: ChatScrollCommand? = null
+) {
     lastLoadedOlderId = 0L
     lastLoadedNewerId = 0L
 
@@ -291,6 +395,10 @@ private suspend fun DefaultChatComponent.loadBottomMessages(threadId: Long?) {
     }
     val shouldReplaceCachedPreview = !hasCachedPreview || messages.isNotEmpty()
     updateMessages(messages, replace = shouldReplaceCachedPreview)
+    refreshCachedSenderProfiles(messages)
+    if (scrollCommand != null) {
+        _state.update { it.copy(pendingScrollCommand = scrollCommand) }
+    }
     if (!isOldestLoaded) {
         delay(100)
         loadMoreMessages()
@@ -300,7 +408,13 @@ private suspend fun DefaultChatComponent.loadBottomMessages(threadId: Long?) {
 private suspend fun DefaultChatComponent.loadAroundMessage(
     messageId: Long,
     threadId: Long?,
-    shouldHighlight: Boolean = true
+    shouldHighlight: Boolean = true,
+    scrollCommand: ChatScrollCommand? = ChatScrollCommand.JumpToMessage(
+        messageId = messageId,
+        highlight = shouldHighlight,
+        align = ScrollAlign.Center,
+        animated = true
+    )
 ) {
     lastLoadedOlderId = 0L
     lastLoadedNewerId = 0L
@@ -311,16 +425,23 @@ private suspend fun DefaultChatComponent.loadAroundMessage(
                 isAtBottom = false,
                 isLatestLoaded = false,
                 isOldestLoaded = false,
-                scrollToMessageId = messageId,
+                scrollToMessageId = null,
                 highlightedMessageId = if (shouldHighlight) messageId else null
             )
         }
         updateMessages(messages, replace = true)
+        refreshCachedSenderProfiles(messages)
+        if (scrollCommand != null) {
+            _state.update { it.copy(pendingScrollCommand = scrollCommand) }
+        }
         delay(100)
         loadMoreMessages()
         loadNewerMessages()
     } else {
-        loadBottomMessages(threadId)
+        loadBottomMessages(
+            threadId = threadId,
+            scrollCommand = ChatScrollCommand.ScrollToBottom(animated = false)
+        )
     }
 }
 
@@ -389,6 +510,7 @@ internal fun DefaultChatComponent.loadMoreMessages() {
 
                 if (olderMessages.isNotEmpty()) {
                     updateMessages(olderMessages)
+                    refreshCachedSenderProfiles(olderMessages)
                 }
 
                 val afterSize = _state.value.messages.size
@@ -461,6 +583,7 @@ internal fun DefaultChatComponent.loadNewerMessages() {
 
             if (newerMessages.isNotEmpty()) {
                 updateMessages(newerMessages)
+                refreshCachedSenderProfiles(newerMessages)
                 lastLoadedNewerId = anchorId
             }
 
@@ -482,11 +605,22 @@ internal fun DefaultChatComponent.scrollToMessageInternal(messageId: Long) {
             it.copy(
                 isLoading = true,
                 isOldestLoaded = false,
-                isLatestLoaded = false
+                isLatestLoaded = false,
+                pendingScrollCommand = null
             )
         }
         try {
-            loadAroundMessage(messageId, _state.value.currentTopicId, shouldHighlight = true)
+            loadAroundMessage(
+                messageId = messageId,
+                threadId = _state.value.currentTopicId,
+                shouldHighlight = true,
+                scrollCommand = ChatScrollCommand.JumpToMessage(
+                    messageId = messageId,
+                    highlight = true,
+                    align = ScrollAlign.Center,
+                    animated = true
+                )
+            )
         } catch (e: Exception) {
             Log.e("DefaultChatComponent", "Failed to scroll to message", e)
         } finally {
@@ -496,18 +630,32 @@ internal fun DefaultChatComponent.scrollToMessageInternal(messageId: Long) {
 }
 
 internal fun DefaultChatComponent.scrollToBottomInternal() {
-    if (_state.value.isLoading) return
+    val currentState = _state.value
+    if (currentState.messages.isNotEmpty() && currentState.isLatestLoaded) {
+        _state.update {
+            it.copy(
+                isAtBottom = true,
+                pendingScrollCommand = ChatScrollCommand.ScrollToBottom(animated = true)
+            )
+        }
+        return
+    }
+    if (currentState.isLoading) return
     cancelAllLoadingJobs()
     messageLoadingJob = scope.launch {
         _state.update {
             it.copy(
                 isLoading = true,
                 isOldestLoaded = false,
-                isLatestLoaded = false
+                isLatestLoaded = false,
+                pendingScrollCommand = null
             )
         }
         try {
-            loadBottomMessages(_state.value.currentTopicId)
+            loadBottomMessages(
+                threadId = _state.value.currentTopicId,
+                scrollCommand = ChatScrollCommand.ScrollToBottom(animated = true)
+            )
         } catch (e: Exception) {
             Log.e("DefaultChatComponent", "Failed to scroll to bottom", e)
         } finally {
@@ -535,6 +683,7 @@ internal fun DefaultChatComponent.setupMessageCollectors() {
                     _state.value.currentTopicId == null || message.threadId == _state.value.currentTopicId
                 if (isCorrectThread) {
                     updateMessages(listOf(message))
+                    requestSenderRefreshIfNeeded(message)
                     _state.update { state ->
                         state.copy(
                             isLatestLoaded = if (message.isOutgoing || state.isAtBottom) true else state.isLatestLoaded
@@ -546,7 +695,10 @@ internal fun DefaultChatComponent.setupMessageCollectors() {
         .launchIn(scope)
 
     repositoryMessage.messageIdUpdateFlow
-        .onEach { (cId, oldId, newMessage) ->
+        .onEach { event ->
+            val cId = event.chatId
+            val oldId = event.oldMessageId
+            val newMessage = event.message
             if (cId == chatId) {
                 if (oldId != newMessage.id) {
                     remappedMessageIds[oldId] = newMessage.id
@@ -592,12 +744,20 @@ internal fun DefaultChatComponent.setupMessageCollectors() {
                         )
                     }
                 }
+
+                val isCurrentThread = _state.value.currentTopicId == null || newMessage.threadId == _state.value.currentTopicId
+                if (isCurrentThread) {
+                    requestSenderRefreshIfNeeded(newMessage)
+                }
             }
         }
         .launchIn(scope)
 
     repositoryMessage.messageUploadProgressFlow
-        .onEach { (messageId, progress) ->
+        .onEach { event ->
+            if (event.chatId != chatId) return@onEach
+            val messageId = event.messageId
+            val progress = event.progress
             updateMessageContent(messageId) { message ->
                 val isUploading = progress < 1f && message.sendingState is MessageSendingState.Pending
                 val newSendingState = if (progress >= 1f) null else message.sendingState
@@ -616,262 +776,303 @@ internal fun DefaultChatComponent.setupMessageCollectors() {
         }
         .launchIn(scope)
 
-    repositoryMessage.messageDownloadProgressFlow
-        .onEach { (messageId, progress) ->
-            updateMessageContent(messageId) { message ->
-                val isDownloading = progress < 1f
-                val newContent = when (val content = message.content) {
-                    is MessageContent.Photo -> content.copy(
-                        isDownloading = isDownloading,
-                        downloadProgress = progress,
-                        downloadError = false
-                    )
-
-                    is MessageContent.Video -> content.copy(
-                        isDownloading = isDownloading,
-                        downloadProgress = progress,
-                        downloadError = false
-                    )
-
-                    is MessageContent.VideoNote -> content.copy(
-                        isDownloading = isDownloading,
-                        downloadProgress = progress,
-                        downloadError = false
-                    )
-
-                    is MessageContent.Document -> content.copy(
-                        isDownloading = isDownloading,
-                        downloadProgress = progress,
-                        downloadError = false
-                    )
-
-                    is MessageContent.Gif -> content.copy(
-                        isDownloading = isDownloading,
-                        downloadProgress = progress,
-                        downloadError = false
-                    )
-
-                    is MessageContent.Voice -> content.copy(
-                        isDownloading = isDownloading,
-                        downloadProgress = progress,
-                        downloadError = false
-                    )
-
-                    is MessageContent.Sticker -> content.copy(
-                        isDownloading = isDownloading,
-                        downloadProgress = progress,
-                        downloadError = false
-                    )
-
-                    else -> content
-                }
-                message.copy(content = newContent)
-            }
-        }
-        .launchIn(scope)
-
-    repositoryMessage.messageDownloadCancelledFlow
-        .onEach { messageId ->
-            var cancelledFileId = 0
-            updateMessageContent(messageId) { message ->
-                val newContent = when (val content = message.content) {
-                    is MessageContent.Photo -> {
-                        cancelledFileId = content.fileId
-                        content.copy(
-                            isDownloading = false,
-                            downloadProgress = 0f,
-                            downloadError = false
-                        )
-                    }
-
-                    is MessageContent.Video -> {
-                        cancelledFileId = content.fileId
-                        content.copy(
-                            isDownloading = false,
-                            downloadProgress = 0f,
-                            downloadError = false
-                        )
-                    }
-
-                    is MessageContent.VideoNote -> {
-                        cancelledFileId = content.fileId
-                        content.copy(
-                            isDownloading = false,
-                            downloadProgress = 0f,
-                            downloadError = false
-                        )
-                    }
-
-                    is MessageContent.Document -> {
-                        cancelledFileId = content.fileId
-                        content.copy(
-                            isDownloading = false,
-                            downloadProgress = 0f,
-                            downloadError = false
-                        )
-                    }
-
-                    is MessageContent.Gif -> {
-                        cancelledFileId = content.fileId
-                        content.copy(
-                            isDownloading = false,
-                            downloadProgress = 0f,
-                            downloadError = false
-                        )
-                    }
-
-                    is MessageContent.Voice -> {
-                        cancelledFileId = content.fileId
-                        content.copy(
-                            isDownloading = false,
-                            downloadProgress = 0f,
-                            downloadError = false
-                        )
-                    }
-
-                    is MessageContent.Sticker -> {
-                        cancelledFileId = content.fileId
-                        content.copy(
-                            isDownloading = false,
-                            downloadProgress = 0f,
-                            downloadError = false
-                        )
-                    }
-
-                    else -> content
-                }
-                message.copy(content = newContent)
-            }
-            AutoDownloadSuppression.suppress(cancelledFileId)
-            if (cancelledFileId != 0) {
-                mediaDownloadRetryCount.remove(cancelledFileId)
-            }
-        }
-        .launchIn(scope)
-
-    repositoryMessage.messageDownloadCompletedFlow
-        .onEach { (messageId, downloadedFileId, path) ->
-            var fileIdToRetry: Int? = null
-            var mainFileId = 0
-            var mainPathUpdated = false
-
-            updateMessageContent(messageId) { message ->
-                val isError = path.isEmpty()
-                val finalPath = path.ifEmpty { null }
-
-                val newContent = when (val content = message.content) {
-                    is MessageContent.Photo -> {
-                        if (downloadedFileId == content.fileId) {
-                            mainFileId = content.fileId
-                            mainPathUpdated = true
-                            if (isError) fileIdToRetry = content.fileId
-                            content.copy(path = finalPath, isDownloading = false, downloadError = isError)
-                        } else {
-                            if (finalPath != null) content.copy(thumbnailPath = finalPath) else content
-                        }
-                    }
-
-                    is MessageContent.Video -> {
-                        if (downloadedFileId == content.fileId) {
-                            mainFileId = content.fileId
-                            mainPathUpdated = true
-                            if (isError) fileIdToRetry = content.fileId
-                            content.copy(path = finalPath, isDownloading = false, downloadError = isError)
-                        } else {
-                            if (finalPath != null) content.copy(thumbnailPath = finalPath) else content
-                        }
-                    }
-
-                    is MessageContent.VideoNote -> {
-                        if (downloadedFileId == content.fileId) {
-                            mainFileId = content.fileId
-                            mainPathUpdated = true
-                            if (isError) fileIdToRetry = content.fileId
-                            content.copy(path = finalPath, isDownloading = false, downloadError = isError)
-                        } else {
-                            content
-                        }
-                    }
-
-                    is MessageContent.Document -> {
-                        if (downloadedFileId == content.fileId) {
-                            mainFileId = content.fileId
-                            mainPathUpdated = true
-                            if (isError) fileIdToRetry = content.fileId
-                            content.copy(path = finalPath, isDownloading = false, downloadError = isError)
-                        } else {
-                            content
-                        }
-                    }
-
-                    is MessageContent.Gif -> {
-                        if (downloadedFileId == content.fileId) {
-                            mainFileId = content.fileId
-                            mainPathUpdated = true
-                            if (isError) fileIdToRetry = content.fileId
-                            content.copy(path = finalPath, isDownloading = false, downloadError = isError)
-                        } else {
-                            content
-                        }
-                    }
-
-                    is MessageContent.Voice -> {
-                        if (downloadedFileId == content.fileId) {
-                            mainFileId = content.fileId
-                            mainPathUpdated = true
-                            if (isError) fileIdToRetry = content.fileId
-                            content.copy(path = finalPath, isDownloading = false, downloadError = isError)
-                        } else {
-                            content
-                        }
-                    }
-
-                    is MessageContent.Sticker -> {
-                        if (downloadedFileId == content.fileId) {
-                            mainFileId = content.fileId
-                            mainPathUpdated = true
-                            if (isError) fileIdToRetry = content.fileId
-                            content.copy(path = finalPath, isDownloading = false, downloadError = isError)
-                        } else {
-                            content
-                        }
-                    }
-
-                    else -> content
-                }
-                message.copy(content = newContent)
-            }
-
-            if (path.isNotEmpty() && mainFileId != 0) {
-                AutoDownloadSuppression.clear(mainFileId)
-                mediaDownloadRetryCount.remove(mainFileId)
-            }
-
-            if (mainPathUpdated && path.isNotEmpty()) {
-                updateFullScreenImagePath(messageId, path)
-            }
-
-            if (path.isNotEmpty() && messageId in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong()) {
-                updateInlineResultsWithFile(messageId.toInt(), path)
-            }
-
-            fileIdToRetry?.let {
-                if (it != 0) {
-                    val suppressed = AutoDownloadSuppression.isSuppressed(it)
-                    if (!suppressed) {
-                        val attempts = (mediaDownloadRetryCount[it] ?: 0) + 1
-                        mediaDownloadRetryCount[it] = attempts
-                        if (attempts <= MAX_DOWNLOAD_RETRIES) {
-                            onDownloadFile(it)
-                        } else {
-                            AutoDownloadSuppression.suppress(it)
-                            Log.w(
-                                "DownloadDebug",
-                                "retryLimitReached: fileId=$it attempts=$attempts chatId=$chatId"
+    repositoryMessage.messageDownloadFlow
+        .onEach { event ->
+            when (event) {
+                is MessageDownloadEvent.Progress -> {
+                    if (event.chatId != chatId) return@onEach
+                    updateMessageContent(event.messageId) { message ->
+                        val isDownloading = event.progress < 1f
+                        val newContent = when (val content = message.content) {
+                            is MessageContent.Photo -> content.copy(
+                                isDownloading = isDownloading,
+                                downloadProgress = event.progress,
+                                downloadError = false
                             )
+
+                            is MessageContent.Video -> content.copy(
+                                isDownloading = isDownloading,
+                                downloadProgress = event.progress,
+                                downloadError = false
+                            )
+
+                            is MessageContent.VideoNote -> content.copy(
+                                isDownloading = isDownloading,
+                                downloadProgress = event.progress,
+                                downloadError = false
+                            )
+
+                            is MessageContent.Document -> content.copy(
+                                isDownloading = isDownloading,
+                                downloadProgress = event.progress,
+                                downloadError = false
+                            )
+
+                            is MessageContent.Gif -> content.copy(
+                                isDownloading = isDownloading,
+                                downloadProgress = event.progress,
+                                downloadError = false
+                            )
+
+                            is MessageContent.Voice -> content.copy(
+                                isDownloading = isDownloading,
+                                downloadProgress = event.progress,
+                                downloadError = false
+                            )
+
+                            is MessageContent.Sticker -> content.copy(
+                                isDownloading = isDownloading,
+                                downloadProgress = event.progress,
+                                downloadError = false
+                            )
+
+                            else -> content
                         }
-                    } else {
-                        Log.d("DownloadDebug", "retrySkippedBySuppression: fileId=$it chatId=$chatId")
+                        message.copy(content = newContent)
+                    }
+                }
+
+                is MessageDownloadEvent.Cancelled -> {
+                    if (event.chatId != chatId) return@onEach
+                    var cancelledFileId = 0
+                    updateMessageContent(event.messageId) { message ->
+                        val newContent = when (val content = message.content) {
+                            is MessageContent.Photo -> {
+                                cancelledFileId = content.fileId
+                                content.copy(
+                                    isDownloading = false,
+                                    downloadProgress = 0f,
+                                    downloadError = false
+                                )
+                            }
+
+                            is MessageContent.Video -> {
+                                cancelledFileId = content.fileId
+                                content.copy(
+                                    isDownloading = false,
+                                    downloadProgress = 0f,
+                                    downloadError = false
+                                )
+                            }
+
+                            is MessageContent.VideoNote -> {
+                                cancelledFileId = content.fileId
+                                content.copy(
+                                    isDownloading = false,
+                                    downloadProgress = 0f,
+                                    downloadError = false
+                                )
+                            }
+
+                            is MessageContent.Document -> {
+                                cancelledFileId = content.fileId
+                                content.copy(
+                                    isDownloading = false,
+                                    downloadProgress = 0f,
+                                    downloadError = false
+                                )
+                            }
+
+                            is MessageContent.Gif -> {
+                                cancelledFileId = content.fileId
+                                content.copy(
+                                    isDownloading = false,
+                                    downloadProgress = 0f,
+                                    downloadError = false
+                                )
+                            }
+
+                            is MessageContent.Voice -> {
+                                cancelledFileId = content.fileId
+                                content.copy(
+                                    isDownloading = false,
+                                    downloadProgress = 0f,
+                                    downloadError = false
+                                )
+                            }
+
+                            is MessageContent.Sticker -> {
+                                cancelledFileId = content.fileId
+                                content.copy(
+                                    isDownloading = false,
+                                    downloadProgress = 0f,
+                                    downloadError = false
+                                )
+                            }
+
+                            else -> content
+                        }
+                        message.copy(content = newContent)
+                    }
+                    AutoDownloadSuppression.suppress(cancelledFileId)
+                    if (cancelledFileId != 0) {
+                        mediaDownloadRetryCount.remove(cancelledFileId)
+                    }
+                }
+
+                is MessageDownloadEvent.Completed -> {
+                    if (event.chatId != chatId) return@onEach
+                    val messageId = event.messageId
+                    val downloadedFileId = event.fileId
+                    val path = event.path
+                    var fileIdToRetry: Int? = null
+                    var mainFileId = 0
+                    var mainPathUpdated = false
+
+                    updateMessageContent(messageId) { message ->
+                        val isError = path.isEmpty()
+                        val finalPath = path.ifEmpty { null }
+
+                        val newContent = when (val content = message.content) {
+                            is MessageContent.Photo -> {
+                                if (downloadedFileId == content.fileId) {
+                                    mainFileId = content.fileId
+                                    mainPathUpdated = true
+                                    if (isError) fileIdToRetry = content.fileId
+                                    content.copy(
+                                        path = finalPath,
+                                        isDownloading = false,
+                                        downloadError = isError
+                                    )
+                                } else {
+                                    if (finalPath != null) content.copy(thumbnailPath = finalPath) else content
+                                }
+                            }
+
+                            is MessageContent.Video -> {
+                                if (downloadedFileId == content.fileId) {
+                                    mainFileId = content.fileId
+                                    mainPathUpdated = true
+                                    if (isError) fileIdToRetry = content.fileId
+                                    content.copy(
+                                        path = finalPath,
+                                        isDownloading = false,
+                                        downloadError = isError
+                                    )
+                                } else {
+                                    if (finalPath != null) content.copy(thumbnailPath = finalPath) else content
+                                }
+                            }
+
+                            is MessageContent.VideoNote -> {
+                                if (downloadedFileId == content.fileId) {
+                                    mainFileId = content.fileId
+                                    mainPathUpdated = true
+                                    if (isError) fileIdToRetry = content.fileId
+                                    content.copy(
+                                        path = finalPath,
+                                        isDownloading = false,
+                                        downloadError = isError
+                                    )
+                                } else {
+                                    content
+                                }
+                            }
+
+                            is MessageContent.Document -> {
+                                if (downloadedFileId == content.fileId) {
+                                    mainFileId = content.fileId
+                                    mainPathUpdated = true
+                                    if (isError) fileIdToRetry = content.fileId
+                                    content.copy(
+                                        path = finalPath,
+                                        isDownloading = false,
+                                        downloadError = isError
+                                    )
+                                } else {
+                                    content
+                                }
+                            }
+
+                            is MessageContent.Gif -> {
+                                if (downloadedFileId == content.fileId) {
+                                    mainFileId = content.fileId
+                                    mainPathUpdated = true
+                                    if (isError) fileIdToRetry = content.fileId
+                                    content.copy(
+                                        path = finalPath,
+                                        isDownloading = false,
+                                        downloadError = isError
+                                    )
+                                } else {
+                                    content
+                                }
+                            }
+
+                            is MessageContent.Voice -> {
+                                if (downloadedFileId == content.fileId) {
+                                    mainFileId = content.fileId
+                                    mainPathUpdated = true
+                                    if (isError) fileIdToRetry = content.fileId
+                                    content.copy(
+                                        path = finalPath,
+                                        isDownloading = false,
+                                        downloadError = isError
+                                    )
+                                } else {
+                                    content
+                                }
+                            }
+
+                            is MessageContent.Sticker -> {
+                                if (downloadedFileId == content.fileId) {
+                                    mainFileId = content.fileId
+                                    mainPathUpdated = true
+                                    if (isError) fileIdToRetry = content.fileId
+                                    content.copy(
+                                        path = finalPath,
+                                        isDownloading = false,
+                                        downloadError = isError
+                                    )
+                                } else {
+                                    content
+                                }
+                            }
+
+                            else -> content
+                        }
+                        message.copy(content = newContent)
+                    }
+
+                    if (path.isNotEmpty() && mainFileId != 0) {
+                        AutoDownloadSuppression.clear(mainFileId)
+                        mediaDownloadRetryCount.remove(mainFileId)
+                    }
+
+                    if (mainPathUpdated && path.isNotEmpty()) {
+                        updateFullScreenImagePath(messageId, path)
+                    }
+
+                    if (path.isNotEmpty() && messageId in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong()) {
+                        updateInlineResultsWithFile(messageId.toInt(), path)
+                    }
+
+                    if (path.isNotEmpty() && messageId == downloadedFileId.toLong()) {
+                        refreshCachedSenderProfiles(_state.value.messages)
+                    }
+
+                    fileIdToRetry?.let {
+                        if (it != 0) {
+                            val suppressed = AutoDownloadSuppression.isSuppressed(it)
+                            if (!suppressed) {
+                                val attempts = (mediaDownloadRetryCount[it] ?: 0) + 1
+                                mediaDownloadRetryCount[it] = attempts
+                                if (attempts <= MAX_DOWNLOAD_RETRIES) {
+                                    onDownloadFile(it)
+                                } else {
+                                    AutoDownloadSuppression.suppress(it)
+                                    Log.w(
+                                        "DownloadDebug",
+                                        "retryLimitReached: fileId=$it attempts=$attempts chatId=$chatId"
+                                    )
+                                }
+                            } else {
+                                Log.d(
+                                    "DownloadDebug",
+                                    "retrySkippedBySuppression: fileId=$it chatId=$chatId"
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -879,7 +1080,9 @@ internal fun DefaultChatComponent.setupMessageCollectors() {
         .launchIn(scope)
 
     repositoryMessage.messageDeletedFlow
-        .onEach { (cId, messageIds) ->
+        .onEach { event ->
+            val cId = event.chatId
+            val messageIds = event.messageIds
             if (cId == chatId) {
                 messageIds.forEach(reactionUpdateSuppressedUntil::remove)
                 messageIds.forEach(remappedMessageIds::remove)
@@ -1006,17 +1209,16 @@ private fun DefaultChatComponent.observeSenderUpdates() {
         .launchIn(scope)
 }
 
-private suspend fun DefaultChatComponent.refreshCachedSenderProfiles(messages: List<MessageModel>) {
+private fun DefaultChatComponent.refreshCachedSenderProfiles(messages: List<MessageModel>) {
     val senderIds = messages.asSequence()
+        .filter { it.needsSenderRefresh() }
         .map { it.senderId }
         .filter { it > 0L }
         .distinct()
         .toList()
 
     senderIds.forEach { senderId ->
-        repositoryMessage.invalidateSenderCache(senderId)
-        val user = userRepository.getUser(senderId) ?: return@forEach
-        refreshMessagesForSender(senderId, user)
+        requestSenderRefresh(senderId)
     }
 }
 
@@ -1128,7 +1330,8 @@ internal fun DefaultChatComponent.handleTopicClick(topicId: Int) {
             isOldestLoaded = false,
             isLatestLoaded = false,
             rootMessage = null,
-            isAtBottom = id == null
+            isAtBottom = id == null,
+            pendingScrollCommand = null
         )
     }
     loadMessages(force = true)
@@ -1144,7 +1347,8 @@ internal fun DefaultChatComponent.handleCommentsClick(messageId: Long) {
                 messages = emptyList(),
                 isOldestLoaded = false,
                 isLatestLoaded = false,
-                isAtBottom = false
+                isAtBottom = false,
+                pendingScrollCommand = null
             )
         }
         loadComments(messageId)

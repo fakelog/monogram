@@ -1,22 +1,57 @@
 package org.monogram.presentation.features.chats.currentChat.components.inputbar
 
-import androidx.compose.animation.*
+import android.net.Uri
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.layout.*
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material3.*
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import org.monogram.domain.models.*
+import org.monogram.domain.models.BotCommandModel
+import org.monogram.domain.models.BotMenuButtonModel
+import org.monogram.domain.models.GifModel
+import org.monogram.domain.models.KeyboardButtonModel
+import org.monogram.domain.models.MessageModel
+import org.monogram.domain.models.MessageSendOptions
+import org.monogram.domain.models.ReplyMarkupModel
+import org.monogram.domain.models.StickerModel
+import org.monogram.domain.models.UserModel
 import org.monogram.domain.repository.StickerRepository
 import org.monogram.presentation.R
 import org.monogram.presentation.features.chats.currentChat.components.chats.BotCommandSuggestions
@@ -24,6 +59,7 @@ import org.monogram.presentation.features.stickers.ui.menu.StickerEmojiMenu
 
 @Composable
 fun ChatInputBarComposerSection(
+    modifier: Modifier = Modifier,
     editingMessage: MessageModel?,
     replyMessage: MessageModel?,
     pendingMediaPaths: List<String>,
@@ -43,8 +79,10 @@ fun ChatInputBarComposerSection(
     focusRequester: FocusRequester,
     canWriteText: Boolean,
     canSendMedia: Boolean,
+    canPasteMediaFromClipboard: Boolean,
     canSendStickers: Boolean,
     canSendVoice: Boolean,
+    canSendVideoNotes: Boolean,
     isStickerMenuVisible: Boolean,
     closeStickerMenuWithoutSlide: Boolean,
     isKeyboardVisible: Boolean,
@@ -57,14 +95,18 @@ fun ChatInputBarComposerSection(
     maxMessageLength: Int,
     isOverMessageLimit: Boolean,
     isVideoMessageMode: Boolean,
+    isSlowModeActive: Boolean,
+    slowModeRemainingSeconds: Int,
     replyMarkup: ReplyMarkupModel?,
     showSendOptionsSheet: Boolean,
     stickerRepository: StickerRepository,
+    isTablet: Boolean = false,
     onCancelEdit: () -> Unit,
     onCancelReply: () -> Unit,
     onCancelMedia: () -> Unit,
     onMediaOrderChange: (List<String>) -> Unit,
     onMediaClick: (String) -> Unit,
+    onPasteImages: (List<Uri>) -> Unit,
     onMentionClick: (UserModel) -> Unit,
     onMentionQueryClear: () -> Unit,
     onInlineResultClick: (String) -> Unit,
@@ -94,7 +136,12 @@ fun ChatInputBarComposerSection(
     onGifSearchFocusedChange: (Boolean) -> Unit,
     onReplyMarkupButtonClick: (KeyboardButtonModel) -> Unit
 ) {
-    Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
+    Surface(
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 2.dp,
+        shape = if (isTablet) RoundedCornerShape(16.dp) else RectangleShape
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -162,12 +209,12 @@ fun ChatInputBarComposerSection(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 8.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.Bottom
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     AnimatedVisibility(
                         visible = !voiceRecorder.isRecording,
-                        enter = fadeIn() + expandHorizontally(),
-                        exit = fadeOut() + shrinkHorizontally()
+                        enter = fadeIn(tween(250)) + expandHorizontally(tween(250)),
+                        exit = fadeOut(tween(200)) + shrinkHorizontally(tween(200))
                     ) {
                         InputBarLeadingIcons(
                             editingMessage = editingMessage,
@@ -219,6 +266,8 @@ fun ChatInputBarComposerSection(
                                     emojiFontFamily = emojiFontFamily,
                                     focusRequester = focusRequester,
                                     pendingMediaPaths = pendingMediaPaths,
+                                    canPasteMediaFromClipboard = canPasteMediaFromClipboard,
+                                    onPasteImages = onPasteImages,
                                     onFocus = onInputFocus,
                                     onOpenFullScreenEditor = onOpenFullScreenEditor,
                                     modifier = Modifier.fillMaxWidth()
@@ -248,8 +297,11 @@ fun ChatInputBarComposerSection(
                                 isOverCharLimit = isOverMessageLimit,
                                 canWriteText = canWriteText,
                                 canSendVoice = canSendVoice,
+                                canSendVideoNotes = canSendVideoNotes,
                                 canSendMedia = canSendMedia,
                                 isVideoMessageMode = isVideoMessageMode,
+                                isSlowModeActive = isSlowModeActive,
+                                slowModeRemainingSeconds = slowModeRemainingSeconds,
                                 onSendWithOptions = onSendWithOptions,
                                 onShowSendOptionsMenu = onShowSendOptionsMenu,
                                 onCameraClick = onCameraClick,
@@ -329,10 +381,13 @@ fun ChatInputBarComposerSection(
                     onGifSelected = onGifClick,
                     onSearchFocused = onGifSearchFocusedChange,
                     panelHeight = stickerMenuHeight,
+                    canSendStickers = canSendStickers,
                     stickerRepository = stickerRepository
                 )
             }
-            Spacer(Modifier.navigationBarsPadding())
+            if (!isTablet) {
+                Spacer(Modifier.navigationBarsPadding())
+            }
         }
     }
 }

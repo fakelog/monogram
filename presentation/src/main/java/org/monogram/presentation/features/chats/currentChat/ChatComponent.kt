@@ -3,7 +3,22 @@ package org.monogram.presentation.features.chats.currentChat
 import androidx.compose.runtime.Stable
 import androidx.compose.ui.platform.Clipboard
 import kotlinx.coroutines.flow.StateFlow
-import org.monogram.domain.models.*
+import org.monogram.domain.models.AttachMenuBotModel
+import org.monogram.domain.models.BotCommandModel
+import org.monogram.domain.models.BotMenuButtonModel
+import org.monogram.domain.models.ChatPermissionsModel
+import org.monogram.domain.models.ChatViewportCacheEntry
+import org.monogram.domain.models.GifModel
+import org.monogram.domain.models.InlineKeyboardButtonModel
+import org.monogram.domain.models.KeyboardButtonModel
+import org.monogram.domain.models.MessageEntity
+import org.monogram.domain.models.MessageModel
+import org.monogram.domain.models.MessageSendOptions
+import org.monogram.domain.models.MessageViewerModel
+import org.monogram.domain.models.StickerSetModel
+import org.monogram.domain.models.TopicModel
+import org.monogram.domain.models.UserModel
+import org.monogram.domain.models.WallpaperModel
 import org.monogram.domain.repository.InlineBotResultsModel
 import org.monogram.domain.repository.MessageRepository
 import org.monogram.domain.repository.StickerRepository
@@ -80,11 +95,13 @@ interface ChatComponent {
     fun onShowAllPinnedMessages()
     fun onDismissPinnedMessages()
     fun onScrollToMessageConsumed()
+    fun onScrollCommandConsumed()
     fun onScrollToBottom()
     fun onDownloadFile(fileId: Int)
     fun onDownloadHighRes(messageId: Long)
     fun onCancelDownloadFile(fileId: Int)
     fun updateScrollPosition(messageId: Long)
+    fun updateViewport(viewport: ChatViewportCacheEntry)
     fun onBottomReached(isAtBottom: Boolean)
     fun onHighlightConsumed()
     fun onTyping()
@@ -196,6 +213,10 @@ interface ChatComponent {
         val canWrite: Boolean = false,
         val isAdmin: Boolean = false,
         val permissions: ChatPermissionsModel = ChatPermissionsModel(),
+        val slowModeDelay: Int = 0,
+        val slowModeDelayExpiresIn: Double = 0.0,
+        val isCurrentUserRestricted: Boolean = false,
+        val restrictedUntilDate: Int = 0,
         val memberCount: Int = 0,
         val onlineCount: Int = 0,
         val unreadCount: Int = 0,
@@ -214,13 +235,16 @@ interface ChatComponent {
         val pinnedMessage: MessageModel? = null,
         val allPinnedMessages: List<MessageModel> = emptyList(),
         val showPinnedMessagesList: Boolean = false,
+        val isLoadingPinnedMessages: Boolean = false,
         val pinnedMessageCount: Int = 0,
         val pinnedMessageIndex: Int = 0,
         val scrollToMessageId: Long? = null,
+        val pendingScrollCommand: ChatScrollCommand? = null,
         val highlightedMessageId: Long? = null,
         val isAtBottom: Boolean = true,
         val currentScrollMessageId: Long = 0L,
         val lastScrollPosition: Long = 0L,
+        val lastSavedViewport: ChatViewportCacheEntry? = null,
         val isLatestLoaded: Boolean = true,
         val isOldestLoaded: Boolean = false,
         val fontSize: Float = 16f,

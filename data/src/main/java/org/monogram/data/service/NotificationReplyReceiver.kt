@@ -9,6 +9,7 @@ import kotlinx.coroutines.launch
 import org.drinkless.tdlib.TdApi
 import org.monogram.data.di.TdNotificationManager
 import org.monogram.data.gateway.TelegramGateway
+import org.monogram.domain.repository.StringProvider
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -19,6 +20,9 @@ class NotificationReplyReceiver : BroadcastReceiver() {
 
     @Inject
     lateinit var notificationManager: TdNotificationManager
+
+    @Inject
+    lateinit var stringProvider: StringProvider
 
     override fun onReceive(context: Context, intent: Intent) {
         val chatId = intent.getLongExtra("chat_id", 0L)
@@ -67,7 +71,7 @@ class NotificationReplyReceiver : BroadcastReceiver() {
                     chatId = chatId,
                     messageId = System.currentTimeMillis(),
                     chatType = chat.type,
-                    senderName = "Вы",
+                    senderName = stringProvider.getString("notification_person_me"),
                     senderBitmap = null,
                     chatIcon = null,
                     text = replyText,

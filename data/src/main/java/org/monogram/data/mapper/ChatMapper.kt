@@ -1,13 +1,22 @@
 package org.monogram.data.mapper
 
 import org.drinkless.tdlib.TdApi
+import org.monogram.core.date.DateFormatManager
 import org.monogram.data.db.model.ChatEntity
-import org.monogram.domain.models.*
+import org.monogram.domain.models.ChatModel
+import org.monogram.domain.models.ChatType
+import org.monogram.domain.models.MessageEntity
+import org.monogram.domain.models.MessageEntityType
+import org.monogram.domain.models.UsernamesModel
 import org.monogram.domain.repository.StringProvider
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Date
+import java.util.Locale
 
-class ChatMapper(private val stringProvider: StringProvider) {
+class ChatMapper(
+    private val stringProvider: StringProvider,
+    private val dateFormatManager: DateFormatManager
+) {
     fun mapChatToModel(
         chat: TdApi.Chat,
         order: Long,
@@ -18,6 +27,17 @@ class ChatMapper(private val stringProvider: StringProvider) {
         isOnline: Boolean,
         userStatus: String,
         isVerified: Boolean,
+        isScam: Boolean,
+        isFake: Boolean,
+        botVerificationIconCustomEmojiId: Long,
+        restrictionReason: String?,
+        hasSensitiveContent: Boolean,
+        activeStoryStateType: String?,
+        activeStoryId: Int,
+        boostLevel: Int,
+        hasForumTabs: Boolean,
+        isAdministeredDirectMessagesGroup: Boolean,
+        paidMessageStarCount: Long,
         isSponsor: Boolean,
         isForum: Boolean,
         isBot: Boolean,
@@ -101,6 +121,17 @@ class ChatMapper(private val stringProvider: StringProvider) {
             },
             blockList = chat.blockList != null,
             isVerified = isVerified || isForcedVerifiedChat(chat.id),
+            isScam = isScam,
+            isFake = isFake,
+            botVerificationIconCustomEmojiId = botVerificationIconCustomEmojiId,
+            restrictionReason = restrictionReason,
+            hasSensitiveContent = hasSensitiveContent,
+            activeStoryStateType = activeStoryStateType,
+            activeStoryId = activeStoryId,
+            boostLevel = boostLevel,
+            hasForumTabs = hasForumTabs,
+            isAdministeredDirectMessagesGroup = isAdministeredDirectMessagesGroup,
+            paidMessageStarCount = paidMessageStarCount,
             isSponsor = isSponsor,
             viewAsTopics = chat.viewAsTopics,
             isForum = isForum,
@@ -161,6 +192,17 @@ class ChatMapper(private val stringProvider: StringProvider) {
             typingAction = entity.typingAction,
             draftMessage = entity.draftMessage,
             isVerified = entity.isVerified || isForcedVerifiedChat(entity.id),
+            isScam = entity.isScam,
+            isFake = entity.isFake,
+            botVerificationIconCustomEmojiId = entity.botVerificationIconCustomEmojiId,
+            restrictionReason = entity.restrictionReason,
+            hasSensitiveContent = entity.hasSensitiveContent,
+            activeStoryStateType = entity.activeStoryStateType,
+            activeStoryId = entity.activeStoryId,
+            boostLevel = entity.boostLevel,
+            hasForumTabs = entity.hasForumTabs,
+            isAdministeredDirectMessagesGroup = entity.isAdministeredDirectMessagesGroup,
+            paidMessageStarCount = entity.paidMessageStarCount,
             isSponsor = entity.isSponsor || (entity.privateUserId != 0L && isSponsoredUser(entity.privateUserId)),
             viewAsTopics = entity.viewAsTopics,
             isForum = entity.isForum,
@@ -224,6 +266,17 @@ class ChatMapper(private val stringProvider: StringProvider) {
             typingAction = domain.typingAction,
             draftMessage = domain.draftMessage,
             isVerified = domain.isVerified || isForcedVerifiedChat(domain.id),
+            isScam = domain.isScam,
+            isFake = domain.isFake,
+            botVerificationIconCustomEmojiId = domain.botVerificationIconCustomEmojiId,
+            restrictionReason = domain.restrictionReason,
+            hasSensitiveContent = domain.hasSensitiveContent,
+            activeStoryStateType = domain.activeStoryStateType,
+            activeStoryId = domain.activeStoryId,
+            boostLevel = domain.boostLevel,
+            hasForumTabs = domain.hasForumTabs,
+            isAdministeredDirectMessagesGroup = domain.isAdministeredDirectMessagesGroup,
+            paidMessageStarCount = domain.paidMessageStarCount,
             isSponsor = domain.isSponsor,
             viewAsTopics = domain.viewAsTopics,
             isForum = domain.isForum,
@@ -387,7 +440,8 @@ class ChatMapper(private val stringProvider: StringProvider) {
         }
 
         val date = lastMsg.date
-        val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+        val timeFormat =
+            SimpleDateFormat(dateFormatManager.getHourMinuteFormat(), Locale.getDefault())
         val time = if (date > 0) timeFormat.format(Date(date.toLong() * 1000)) else ""
         return Triple(txt, entities, time)
     }
@@ -411,6 +465,7 @@ class ChatMapper(private val stringProvider: StringProvider) {
         return formatChatUserStatus(
             status = status,
             stringProvider = stringProvider,
+            dateFormatManager = dateFormatManager,
             isBot = isBot
         )
     }

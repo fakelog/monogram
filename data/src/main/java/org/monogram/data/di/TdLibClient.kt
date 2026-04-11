@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.drinkless.tdlib.Client
 import org.drinkless.tdlib.TdApi
@@ -18,13 +19,16 @@ internal class TdLibClient {
     private val TAG = "TdLibClient"
     private val globalRetryAfterUntilMs = AtomicLong(0L)
     private val _updates = MutableSharedFlow<TdApi.Update>(
-        replay = 10,
-        extraBufferCapacity = 1000,
+        replay = 3,
+        extraBufferCapacity = 64,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
 
     private val _isAuthenticated = MutableStateFlow(false)
     val isAuthenticated = _isAuthenticated.asStateFlow()
+
+    private val _isInitialized = MutableStateFlow(false)
+    val isInitialized = _isInitialized.asStateFlow()
 
     init {
         try {
@@ -41,7 +45,9 @@ internal class TdLibClient {
         { result ->
             if (result is TdApi.Update) {
                 if (result is TdApi.UpdateAuthorizationState) {
-                    _isAuthenticated.value = result.authorizationState is TdApi.AuthorizationStateReady
+                    val state = result.authorizationState
+                    _isInitialized.value = state !is TdApi.AuthorizationStateWaitTdlibParameters
+                    _isAuthenticated.value = state is TdApi.AuthorizationStateReady
                 }
                 _updates.tryEmit(result)
             }
@@ -68,6 +74,16 @@ internal class TdLibClient {
     }
 
     suspend fun <T : TdApi.Object> sendSuspend(function: TdApi.Function<T>): T {
+        if (function !is TdApi.SetTdlibParameters && 
+            function !is TdApi.SetLogVerbosityLevel && 
+            function !is TdApi.GetOption &&
+            function !is TdApi.GetAuthorizationState) {
+            if (!_isInitialized.value) {
+                Log.d(TAG, "Waiting for TDLib initialization before sending $function")
+                isInitialized.first { it }
+            }
+        }
+
         var retries = 0
         while (true) {
             waitForGlobalRetryWindow()
@@ -81,8 +97,12 @@ internal class TdLibClient {
             if (result.code == 429 && retries < 3) {
                 retries++
                 val retryAfterMs = parseRetryAfterMs(result.message)
-                updateGlobalRetryWindow(retryAfterMs)
                 Log.w(TAG, "Rate limited for $function, retrying in ${retryAfterMs}ms (attempt $retries)")
+                if (function is TdApi.GetUserFullInfo) {
+                    delay(retryAfterMs)
+                } else {
+                    updateGlobalRetryWindow(retryAfterMs)
+                }
                 continue
             }
 

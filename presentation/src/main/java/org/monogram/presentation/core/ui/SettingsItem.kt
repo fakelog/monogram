@@ -23,9 +23,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.flow.filter
-import org.monogram.presentation.di.appInject
+import kotlinx.coroutines.flow.filterIsInstance
+import org.monogram.domain.models.FileDownloadEvent
 import org.monogram.domain.models.FileModel
 import org.monogram.domain.repository.FileRepository
+import org.monogram.presentation.di.appInject
 import java.io.File
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -95,9 +97,10 @@ fun SettingsItem(
                     LaunchedEffect(icon.id) {
                         if (localPath.isEmpty() || !File(localPath).exists()) {
                             fileRepository.downloadFile(icon.id, 32)
-                            fileRepository.messageDownloadCompletedFlow
-                                .filter { it.first == icon.id.toLong() }
-                                .collect { (_, _, completedPath) -> localPath = completedPath }
+                            fileRepository.fileDownloadFlow
+                                .filterIsInstance<FileDownloadEvent.Completed>()
+                                .filter { it.fileId == icon.id }
+                                .collect { completed -> localPath = completed.path }
                         }
                     }
 

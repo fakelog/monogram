@@ -11,6 +11,7 @@ import org.maplibre.android.MapLibre
 import org.maplibre.android.WellKnownTileServer
 import org.monogram.app.di.HiltAppContainer
 import org.monogram.app.di.StartupInitializer
+import org.monogram.data.infra.DataMemoryPressureHandler
 import org.monogram.domain.managers.DistrManager
 import org.monogram.domain.repository.AppPreferencesProvider
 import org.monogram.domain.repository.PushProvider
@@ -34,6 +35,9 @@ class App : Application(), SingletonImageLoader.Factory {
     lateinit var appPreferencesProvider: AppPreferencesProvider
 
     @Inject
+    lateinit var dataMemoryPressureHandler: DataMemoryPressureHandler
+
+    @Inject
     lateinit var imageLoader: ImageLoader
 
     override fun onCreate() {
@@ -43,6 +47,19 @@ class App : Application(), SingletonImageLoader.Factory {
         initAppContainer()
         initMapLibre()
         checkPushAvailability()
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= TRIM_MEMORY_RUNNING_LOW) {
+            trimInMemoryCaches("onTrimMemory:$level")
+        }
+    }
+
+    override fun onLowMemory() {
+        super.onLowMemory()
+        trimInMemoryCaches("onLowMemory")
     }
 
     private fun initCrashHandler() {
@@ -85,7 +102,26 @@ class App : Application(), SingletonImageLoader.Factory {
         }
     }
 
+    private fun trimInMemoryCaches(reason: String) {
+        if (!::appContainer.isInitialized) return
+        runCatching {
+            dataMemoryPressureHandler.clearDataCaches(reason)
+        }.onFailure { error ->
+            Log.w(TAG, "Failed to clear data caches for $reason", error)
+        }
+
+        runCatching {
+            imageLoader.memoryCache?.clear()
+        }.onFailure { error ->
+            Log.w(TAG, "Failed to clear Coil memory cache for $reason", error)
+        }
+    }
+
     override fun newImageLoader(context: PlatformContext): ImageLoader {
         return imageLoader
+    }
+
+    companion object {
+        private const val TAG = "App"
     }
 }

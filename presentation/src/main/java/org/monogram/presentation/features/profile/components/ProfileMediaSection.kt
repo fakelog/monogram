@@ -43,6 +43,7 @@ import org.monogram.presentation.R
 import org.monogram.presentation.core.ui.Avatar
 import org.monogram.presentation.core.ui.rememberShimmerBrush
 import org.monogram.presentation.core.util.getUserStatusText
+import org.monogram.presentation.di.LocalAppContainer
 import org.monogram.presentation.features.chats.currentChat.components.VideoStickerPlayer
 import org.monogram.presentation.features.chats.currentChat.components.VideoType
 import org.monogram.presentation.features.profile.ProfileComponent
@@ -378,7 +379,12 @@ private fun LazyGridScope.membersList(
                 },
                 supportingContent = {
                     val context = LocalContext.current
-                    val statusText = getUserStatusText(user, context)
+
+                    val appContainer = LocalAppContainer.current
+                    val dateFormatManager = appContainer.utils.dateFormatManager
+                    val timeFormat = dateFormatManager.getHourMinuteFormat()
+
+                    val statusText = getUserStatusText(user, context, timeFormat)
 
                     Text(
                         text = statusText,

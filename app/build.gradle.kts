@@ -1,14 +1,14 @@
 import com.android.build.api.artifact.SingleArtifact
 import com.android.build.api.variant.FilterConfiguration
+import com.android.build.api.variant.impl.VariantOutputImpl
 import com.google.android.gms.oss.licenses.plugin.DependencyTask
 import com.google.gms.googleservices.GoogleServicesPlugin
 
 plugins {
     alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.hilt.android)
     alias(libs.plugins.ksp)
-    alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.google.oss.licenses)
     alias(libs.plugins.google.services)
     alias(libs.plugins.androidx.baselineprofile)
@@ -22,8 +22,8 @@ android {
         applicationId = "org.monogram"
         minSdk = 25
         targetSdk = 36
-        versionCode = 6
-        versionName = "0.0.6"
+        versionCode = 7
+        versionName = "0.0.7"
     }
 
     splits {
@@ -47,10 +47,16 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            buildFeatures {
+                resValues = true
+            }
             signingConfig = signingConfigs.getByName("debug")
             resValue("string", "app_name", "MonoGram")
         }
         debug {
+            buildFeatures {
+                resValues = true
+            }
             applicationIdSuffix = ".debug"
             isMinifyEnabled = false
             resValue("string", "app_name", "MonoGram Debug")
@@ -60,9 +66,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
     }
-    kotlin {
-        jvmToolchain(21)
-    }
     buildFeatures {
         compose = true
     }
@@ -70,37 +73,41 @@ android {
 
 androidComponents {
     onVariants { variant ->
+        if (variant.buildType != "release") return@onVariants
+
+        variant.outputs.forEach { output ->
+            val variantOutput = output as? VariantOutputImpl ?: return@forEach
+            val abi = variantOutput.filters.find {
+                it.filterType == FilterConfiguration.FilterType.ABI
+            }?.identifier ?: "universal"
+            val versionName = variantOutput.versionName.orNull ?: "unknown"
+
+            variantOutput.outputFileName.set(
+                "monogram-$abi-$versionName-${variant.buildType}.apk"
+            )
+        }
+
         val apkDirProvider = variant.artifacts.get(SingleArtifact.APK)
-        val artifactsLoader = variant.artifacts.getBuiltArtifactsLoader()
 
-        val renameTask = tasks.register("rename${variant.name.capitalize()}Apk") {
-            inputs.dir(apkDirProvider)
+        val capitalizedVariantName = variant.name.replaceFirstChar {
+            if (it.isLowerCase()) it.titlecase() else it.toString()
+        }
 
-            doLast {
-                val builtArtifacts = artifactsLoader.load(apkDirProvider.get())!!
-                val targetDir = apkDirProvider.get().asFile
+        val copyTask = tasks.register<Sync>("copy${capitalizedVariantName}Apk") {
+            from(apkDirProvider)
+            include("*.apk")
+            into(layout.projectDirectory.dir("releases"))
 
-                builtArtifacts.elements.forEach { artifact ->
-                    val abi = artifact.filters.find {
-                        it.filterType == FilterConfiguration.FilterType.ABI
-                    }?.identifier ?: "universal"
-                    val versionName = artifact.versionName
-                    val versionCode = artifact.versionCode
-                    val buildType = variant.buildType
-
-                    val originalApk = File(artifact.outputFile)
-                    val targetFile = File(
-                        targetDir,
-                        "monogram-$abi-${versionName}(${versionCode})-${buildType}.apk"
-                    )
-
-                    originalApk.copyTo(targetFile, overwrite = true)
-                }
+            doFirst {
+                destinationDir.mkdirs()
+                destinationDir.listFiles()
+                    ?.filter { it.isFile && it.extension == "apk" && it.name.startsWith("monogram-") }
+                    ?.forEach { it.delete() }
             }
         }
 
-        project.tasks.matching { it.name == "assemble${variant.name.capitalize()}" }.configureEach {
-            finalizedBy(renameTask)
+        project.tasks.matching { it.name == "assemble${capitalizedVariantName}" }.configureEach {
+            finalizedBy(copyTask)
         }
     }
 }
@@ -108,6 +115,7 @@ androidComponents {
 dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.bundles.androidx.compose)
+    implementation(libs.androidx.core.splashscreen)
 
     implementation(libs.bundles.decompose)
 
@@ -137,14 +145,20 @@ dependencies {
 
 tasks.withType(DependencyTask::class.java).configureEach {
     if (name == "debugOssDependencyTask") {
-        val releaseTaskProvider = project.tasks.named<DependencyTask>("releaseOssDependencyTask")
+        val releaseJsonProvider =
+            layout.buildDirectory.file("generated/third_party_licenses/release/dependencies.json")
+        val debugJsonProvider =
+            layout.buildDirectory.file("generated/third_party_licenses/debug/dependencies.json")
 
-        dependsOn(releaseTaskProvider)
+        dependsOn("releaseOssDependencyTask")
 
         doLast {
-            val releaseJson = releaseTaskProvider.get().dependenciesJson.get().asFile
-            val debugJson = dependenciesJson.get().asFile
-            if (releaseJson.exists()) releaseJson.copyTo(debugJson, overwrite = true)
+            val releaseJson = releaseJsonProvider.get().asFile
+            val debugJson = debugJsonProvider.get().asFile
+            if (releaseJson.exists()) {
+                debugJson.parentFile?.mkdirs()
+                releaseJson.copyTo(debugJson, overwrite = true)
+            }
         }
     }
 }

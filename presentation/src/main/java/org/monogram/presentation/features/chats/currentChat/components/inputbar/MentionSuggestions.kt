@@ -18,6 +18,7 @@ import org.monogram.domain.models.UserModel
 import org.monogram.domain.models.UserStatusType
 import org.monogram.presentation.core.ui.Avatar
 import org.monogram.presentation.core.util.getUserStatusText
+import org.monogram.presentation.di.LocalAppContainer
 
 @Composable
 fun MentionSuggestions(
@@ -25,6 +26,9 @@ fun MentionSuggestions(
     onMentionClick: (UserModel) -> Unit
 ) {
     val context = LocalContext.current
+    val appContainer = LocalAppContainer.current
+    val dateFormatManager = appContainer.utils.dateFormatManager
+    val timeFormat = dateFormatManager.getHourMinuteFormat()
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -58,7 +62,7 @@ fun MentionSuggestions(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        val status = user.username?.let { "@$it" } ?: getUserStatusText(user, context)
+                        val status = user.username?.let { "@$it" } ?: getUserStatusText(user, context, timeFormat)
                         Text(
                             text = status,
                             style = MaterialTheme.typography.labelMedium,

@@ -7,6 +7,7 @@ import org.monogram.core.Logger
 import org.monogram.domain.managers.*
 import org.monogram.domain.repository.*
 import org.monogram.presentation.core.util.AppPreferences
+import org.monogram.presentation.core.util.DateFormatManager
 import org.monogram.presentation.core.util.IDownloadUtils
 import org.monogram.presentation.features.chats.currentChat.components.ExoPlayerCache
 import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
@@ -76,6 +77,7 @@ interface UtilsContainer {
     val clipManager: ClipManager
     val dispatcherProvider: DispatcherProvider
     val logger: Logger
+    val dateFormatManager: DateFormatManager
     fun messageDisplayer(): MessageDisplayer
     fun externalNavigator(): ExternalNavigator
     fun phoneManager(): PhoneManager

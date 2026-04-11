@@ -12,6 +12,9 @@
     <string name="current_device_section">Este dispositivo</string>
     <string name="login_requests_section">Solicitudes de inicio de sesión</string>
     <string name="active_sessions_section">Sesiones activas</string>
+    <string name="sessions_login_attempt">Intento de inicio de sesión</string>
+    <string name="sessions_unconfirmed">Sin confirmar</string>
+    <string name="sessions_terminate_action">Finalizar sesión</string>
 
     <string name="cd_navigate_back">Navegar hacia atrás</string>
     <string name="cd_close_scanner">Cerrar escáner</string>
@@ -136,7 +139,7 @@
     <string name="mini_app_default_name">Mini App</string>
 
     <!-- Account Menu -->
-    <string name="app_name_dev">MonoGram Dev</string>
+    <string name="app_name_dev">MonoGram Alpha</string>
     <string name="action_add_account">Añadir Cuenta</string>
     <string name="add_account_subtitle">Inicia sesión en otra cuenta</string>
     <string name="menu_my_profile">Mi Perfil</string>
@@ -152,7 +155,7 @@
     <string name="menu_help_feedback">Ayuda y Comentarios</string>
     <string name="menu_help_feedback_subtitle">Preguntas frecuentes y soporte</string>
     <string name="privacy_policy">Política de Privacidad</string>
-    <string name="app_version_footer_format">MonoGram Dev para Android v%1$s</string>
+    <string name="app_version_footer_format">MonoGram Alpha para Android v%1$s</string>
     <string name="unknown_user">Usuario Desconocido</string>
     <string name="no_info">Sin información</string>
     <string name="cd_show_accounts">Mostrar cuentas</string>
@@ -247,7 +250,10 @@
 
     <!-- Profile -->
     <string name="unknown_title">Desconocido</string>
-    <string name="members_count_format">%1$d miembros</string>
+    <plurals name="members_count_format">
+        <item quantity="one">%1$d miembro</item>
+        <item quantity="other">%1$d miembros</item>
+    </plurals>
     <string name="members_online_count_format">%1$s, %2$d en línea</string>
     <string name="not_implemented">No implementado</string>
     <string name="search_not_implemented">Búsqueda no implementada</string>
@@ -470,7 +476,7 @@
     <!-- Proxy Settings -->
     <string name="proxy_settings_header">Configuración de Proxy</string>
     <string name="refresh_pings_cd">Actualizar Pings</string>
-    <string name="add_proxy_button">Añadir Proxy</string>
+    <string name="add_proxy_button">Añadir</string>
     <string name="connection_section_header">Conexión</string>
     <string name="smart_switching_title">Cambio Inteligente</string>
     <string name="smart_switching_subtitle">Usar automáticamente el proxy más rápido</string>
@@ -479,11 +485,47 @@
     <string name="disable_proxy_title">Deshabilitar Proxy</string>
     <string name="connected_directly_subtitle">Conectado directamente</string>
     <string name="switch_to_direct_subtitle">Cambiar a conexión directa</string>
-    <string name="telega_proxy_header">Telega Proxy</string>
-    <string name="telega_proxy_subtitle">Se ha acusado a Telega Proxy de interceptar tráfico. MTProto protege los datos de los mensajes de la intercepción, pero usa este proxy bajo tu propio riesgo. Más info: t.me/te[...]
-    </string>
-    <string name="enable_telega_proxy_title">Habilitar Telega Proxy</string>
-    <string name="enable_telega_proxy_subtitle">Auto-obtener y cambiar al mejor</string>
+    <string name="proxy_network_rules_header">Reglas de red</string>
+    <string name="proxy_network_rules_subtitle">Elige cómo funciona el proxy para cada tipo de red</string>
+    <string name="proxy_network_wifi">Wi-Fi</string>
+    <string name="proxy_network_mobile">Datos móviles</string>
+    <string name="proxy_network_vpn">VPN</string>
+    <string name="proxy_network_other">Otras redes</string>
+    <string name="proxy_network_mode_direct">Directo</string>
+    <string name="proxy_network_mode_best">Mejor proxy</string>
+    <string name="proxy_network_mode_last_used">Último usado</string>
+    <string name="proxy_network_mode_specific">Proxy específico</string>
+    <string name="proxy_network_mode_direct_subtitle">Conectar siempre de forma directa en esta red</string>
+    <string name="proxy_network_mode_best_subtitle">Elegir el proxy disponible más rápido en esta red</string>
+    <string name="proxy_network_mode_last_used_subtitle">Reutilizar el último proxy usado en esta red</string>
+    <string name="proxy_network_mode_specific_subtitle">Usar siempre un proxy elegido en esta red</string>
+    <string name="proxy_specific_target_format">Específico: %1$s:%2$d</string>
+    <string name="proxy_list_behavior_header">Comportamiento de la lista</string>
+    <string name="proxy_sort_mode_title">Ordenar proxys</string>
+    <string name="proxy_sort_mode_subtitle">Elige cómo se ordena la lista de proxys</string>
+    <string name="proxy_sort_mode_active_first">Activo primero</string>
+    <string name="proxy_sort_mode_lowest_ping">Menor latencia</string>
+    <string name="proxy_sort_mode_server_name">Nombre del servidor</string>
+    <string name="proxy_sort_mode_proxy_type">Tipo de proxy</string>
+    <string name="proxy_sort_mode_status">Estado</string>
+    <string name="proxy_unavailable_fallback_title">Si el proxy seleccionado no está disponible</string>
+    <string name="proxy_unavailable_fallback_subtitle">Comportamiento de respaldo para modos específico/último usado</string>
+    <string name="proxy_fallback_best_proxy">Cambiar al mejor proxy</string>
+    <string name="proxy_fallback_direct">Cambiar a conexión directa</string>
+    <string name="proxy_fallback_keep_current">Mantener estado actual</string>
+    <string name="hide_offline_proxies_title">Ocultar proxys sin conexión</string>
+    <string name="hide_offline_proxies_subtitle">Mostrar solo proxys disponibles o sin comprobar</string>
+    <string name="proxy_export_action">Exportar proxys</string>
+    <string name="proxy_import_action">Importar proxys</string>
+    <string name="proxy_export_success">Lista de proxys exportada</string>
+    <string name="proxy_export_failed">Error al exportar la lista de proxys</string>
+    <string name="proxy_import_failed">Error al leer el archivo de importación</string>
+    <string name="proxy_action_set_favorite">Marcar como favorito</string>
+    <string name="proxy_action_remove_favorite">Quitar de favoritos</string>
+    <string name="proxy_action_copy_link">Copiar como enlace</string>
+    <string name="proxy_action_edit">Editar proxy</string>
+    <string name="proxy_action_delete">Eliminar proxy</string>
+    <string name="proxy_link_copied">Enlace de proxy copiado</string>
     <string name="refresh_list_title">Actualizar Lista</string>
     <string name="refresh_list_subtitle">Obtener últimos proxys de la comunidad</string>
     <string name="your_proxies_header">Tus Proxys</string>
@@ -494,6 +536,7 @@
     <string name="remove_all_proxies_title">Eliminar Todos los Proxys</string>
     <string name="remove_all_proxies_confirmation">Esto eliminará todos los proxys configurados de la aplicación. ¿Continuar?</string>
     <string name="no_proxies_label">Sin proxys añadidos</string>
+    <string name="no_proxies_match_filter_label">Ningún proxy coincide con los filtros actuales</string>
     <string name="delete_proxy_title">Eliminar Proxy</string>
     <string name="delete_proxy_confirmation_format">¿Estás seguro de que quieres eliminar el proxy %1$s?</string>
     <string name="new_proxy_title">Nuevo Proxy</string>
@@ -503,7 +546,7 @@
     <string name="secret_hex_placeholder">Secreto (Hex)</string>
     <string name="username_optional_placeholder">Nombre de Usuario (Opcional)</string>
     <string name="password_optional_placeholder">Contraseña (Opcional)</string>
-    <string name="save_changes_button">Guardar Cambios</string>
+    <string name="save_changes_button">Guardar</string>
     <string name="test_proxy_button">Probar</string>
     <string name="test_proxy_result">Resultado de la Prueba</string>
     <string name="action_delete">Eliminar</string>
@@ -570,7 +613,6 @@
     <string name="message_letter_spacing_title">Espaciado de letras del mensaje</string>
     <string name="bubble_rounding_title">Redondeo de burbuja</string>
     <string name="sticker_size_title">Tamaño del sticker</string>
-    <string name="reset_button">Restablecer</string>
     <string name="chat_wallpaper_header">Fondo de Pantalla del Chat</string>
     <string name="reset_wallpaper_cd">Restablecer Fondo de Pantalla</string>
     <string name="upload_wallpaper_cd">Subir fondo de pantalla</string>
@@ -612,6 +654,8 @@
     <string name="show_link_previews_subtitle">Mostrar vistas previas de enlaces en mensajes</string>
     <string name="drag_to_back_title">Arrastrar para Volver</string>
     <string name="drag_to_back_subtitle">Deslizar desde el borde izquierdo para volver</string>
+    <string name="tablet_interface_title">Interfaz para tablet</string>
+    <string name="tablet_interface_subtitle">Usar diseño de pantalla dividida en tablets</string>
     <string name="two_line_label">Dos Líneas</string>
     <string name="three_line_label">Tres Líneas</string>
     <string name="show_photos_title">Mostrar Fotos</string>
@@ -984,6 +1028,7 @@
     <string name="action_cancel">Cancelar</string>
     <string name="action_copy">Copiar</string>
     <string name="action_paste">Pegar</string>
+    <string name="action_paste_image">Pegar imagen</string>
     <string name="action_cut">Cortar</string>
     <string name="action_select_all">Seleccionar todo</string>
     <string name="action_apply">Aplicar</string>
@@ -1042,6 +1087,9 @@
     <string name="editor_word_count">%1$d palabras</string>
     <string name="editor_reading_time">~%1$d min de lectura</string>
     <string name="editor_autosave_done">Borrador guardado automáticamente</string>
+    <string name="editor_action_copy">Copiar</string>
+    <string name="editor_action_cut">Cortar</string>
+    <string name="editor_action_paste">Pegar</string>
     <string name="action_insert">Insertar</string>
     <string name="action_previous">Anterior</string>
     <string name="action_next">Siguiente</string>
@@ -1104,6 +1152,20 @@
     <string name="notification_service_stop">Detener</string>
     <string name="notification_service_channel_name">Servicio en segundo plano</string>
     <string name="notification_service_channel_description">Notificación sobre la aplicación en ejecución en segundo plano</string>
+    <string name="notification_new_message">Nuevo mensaje</string>
+    <string name="notification_person_me">Yo</string>
+    <string name="notification_summary_title_format">%1$d mensajes de %2$d chats</string>
+    <string name="notification_summary_text_format">%1$d chats</string>
+    <string name="notification_group_chats">Chats</string>
+    <string name="notification_group_other">Otros</string>
+    <string name="notification_channel_private_name">Chats privados</string>
+    <string name="notification_channel_private_description">Notificaciones de chats privados</string>
+    <string name="notification_channel_groups_name">Grupos</string>
+    <string name="notification_channel_groups_description">Notificaciones de grupos</string>
+    <string name="notification_channel_channels_name">Canales</string>
+    <string name="notification_channel_channels_description">Notificaciones de canales</string>
+    <string name="notification_channel_other_name">Otros</string>
+    <string name="notification_channel_other_description">Otras notificaciones</string>
 
     <!-- Chat Mapper / Media Types -->
     <string name="chat_mapper_photo">📷 Foto</string>
@@ -1298,6 +1360,12 @@
     <string name="empty_links">No se encontraron enlaces</string>
     <string name="empty_gifs">No se encontraron GIFs</string>
     <string name="label_bot_badge">BOT</string>
+    <string name="label_scam_badge">ESTAFA</string>
+    <string name="label_fake_badge">FALSO</string>
+    <string name="unofficial_app_title">Usa app no oficial</string>
+    <string name="unofficial_app_subtitle">Esta cuenta está usando un cliente no oficial de Telegram</string>
+    <string name="bot_verification_title">Verificación del bot</string>
+    <string name="bot_verification_subtitle">Verificado por un bot de terceros</string>
     <string name="opening_hours_closed">Cerrado</string>
     <string name="label_id">ID</string>
 
@@ -1357,6 +1425,10 @@
     <string name="statistics_vs_previous"> vs anterior</string>
     <string name="statistics_unknown_type">Tipo de estadística desconocido</string>
     <string name="statistics_data_class_format">Clase de datos: %1$s</string>
+    <string name="profile_statistics_preview_contact_format">Contacto: %1$s</string>
+    <string name="profile_statistics_preview_venue_format">Lugar: %1$s</string>
+    <string name="profile_statistics_preview_poll_format">Encuesta: %1$s</string>
+    <string name="profile_statistics_preview_service_message">Mensaje de servicio</string>
 
     <!-- Selection: Viewer Common -->
     <string name="viewer_back">Atrás</string>
@@ -1602,7 +1674,6 @@
     <string name="logs_media_unsupported">Mensaje no soportado</string>
 
     <!-- Date and Formats -->
-    <string name="format_time">HH:mm</string>
     <string name="format_duration">%1$02d:%2$02d</string>
 
     <!-- Views Count -->
@@ -1715,6 +1786,17 @@
     <string name="mini_app_permission_request">Solicitud de permiso</string>
     <string name="mini_app_allow">Permitir</string>
     <string name="mini_app_deny">Denegar</string>
+    <string name="mini_app_permission_biometry">Biometría</string>
+    <string name="mini_app_share_contact_title">Compartir contacto</string>
+    <string name="mini_app_share_contact_message">¿Permitir que %1$s acceda a tu número de teléfono?</string>
+    <string name="mini_app_allow_messages_title">Permitir mensajes</string>
+    <string name="mini_app_allow_messages_message">¿Permitir que %1$s te envíe mensajes?</string>
+    <string name="mini_app_download_file_title">Descargar archivo</string>
+    <string name="mini_app_download_file_message_generic">¿Descargar este archivo?</string>
+    <string name="mini_app_download_file_message_named">¿Descargar %1$s?</string>
+    <string name="mini_app_biometric_auth_title">Autenticación biométrica</string>
+    <string name="mini_app_biometric_auth_subtitle">Autentícate para continuar</string>
+    <string name="mini_app_request_location_access_message">¿Permitir que este bot acceda a tu ubicación?</string>
     <string name="mini_app_bot_permissions">Permisos del bot</string>
     <string name="mini_app_tos_title">Términos de servicio</string>
     <string name="mini_app_tos_text">Al lanzar esta Mini App, aceptas los Términos de servicio y la Política de privacidad. El bot podrá acceder a tu información de perfil básica.</string>

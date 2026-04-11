@@ -13,8 +13,10 @@ import androidx.compose.ui.unit.dp
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
 import org.monogram.presentation.core.ui.Avatar
+import org.monogram.presentation.di.LocalAppContainer
 import java.text.SimpleDateFormat
 import java.util.*
+import androidx.compose.ui.platform.LocalLocale
 
 @Composable
 fun MessageSearchItem(
@@ -27,13 +29,17 @@ fun MessageSearchItem(
     val currentCalendar = Calendar.getInstance()
     calendar.time = date
 
+    val appContainer = LocalAppContainer.current
+    val dateFormatManager = appContainer.utils.dateFormatManager
+    val timeFormat = dateFormatManager.getHourMinuteFormat()
+
     val isToday = calendar.get(Calendar.YEAR) == currentCalendar.get(Calendar.YEAR) &&
             calendar.get(Calendar.DAY_OF_YEAR) == currentCalendar.get(Calendar.DAY_OF_YEAR)
 
     val format = if (isToday) {
-        SimpleDateFormat("HH:mm", Locale.getDefault())
+        SimpleDateFormat(timeFormat, LocalLocale.current.platformLocale)
     } else {
-        SimpleDateFormat("MMM d", Locale.getDefault())
+        SimpleDateFormat("MMM d", LocalLocale.current.platformLocale)
     }
     val time = format.format(date)
 

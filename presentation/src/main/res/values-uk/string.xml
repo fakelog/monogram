@@ -12,6 +12,9 @@
     <string name="current_device_section">Цей пристрій</string>
     <string name="login_requests_section">Запити на вхід</string>
     <string name="active_sessions_section">Активні сеанси</string>
+    <string name="sessions_login_attempt">Спроба входу</string>
+    <string name="sessions_unconfirmed">Не підтверджено</string>
+    <string name="sessions_terminate_action">Завершити сеанс</string>
 
     <string name="cd_navigate_back">Назад</string>
     <string name="cd_close_scanner">Закрити сканер</string>
@@ -136,7 +139,7 @@
     <string name="mini_app_default_name">Mini App</string>
 
     <!-- Account Menu -->
-    <string name="app_name_dev">MonoGram Dev</string>
+    <string name="app_name_dev">MonoGram Alpha</string>
     <string name="action_add_account">Додати акаунт</string>
     <string name="add_account_subtitle">Увійти в інший акаунт</string>
     <string name="menu_my_profile">Мій профіль</string>
@@ -152,7 +155,7 @@
     <string name="menu_help_feedback">Допомога</string>
     <string name="menu_help_feedback_subtitle">FAQ та підтримка</string>
     <string name="privacy_policy">Політика конфіденційності</string>
-    <string name="app_version_footer_format">MonoGram Dev для Android v%1$s</string>
+    <string name="app_version_footer_format">MonoGram Alpha для Android v%1$s</string>
     <string name="unknown_user">Невідомий користувач</string>
     <string name="no_info">Немає інформації</string>
     <string name="cd_show_accounts">Показати акаунти</string>
@@ -245,7 +248,12 @@
 
     <!-- Profile -->
     <string name="unknown_title">Невідомо</string>
-    <string name="members_count_format">Учасники: %1$d</string>
+    <plurals name="members_count_format">
+        <item quantity="one">%1$d учасник</item>
+        <item quantity="few">%1$d учасники</item>
+        <item quantity="many">%1$d учасників</item>
+        <item quantity="other">%1$d учасника</item>
+    </plurals>
     <string name="members_online_count_format">%1$s, %2$d в мережі</string>
     <string name="not_implemented">Ще не реалізовано</string>
     <string name="search_not_implemented">Пошук поки не працює</string>
@@ -462,7 +470,7 @@
     <!-- Proxy Settings -->
     <string name="proxy_settings_header">Налаштування проксі</string>
     <string name="refresh_pings_cd">Оновити затримку</string>
-    <string name="add_proxy_button">Додати проксі</string>
+    <string name="add_proxy_button">Додати</string>
     <string name="connection_section_header">Підключення</string>
     <string name="smart_switching_title">Розумне перемикання</string>
     <string name="smart_switching_subtitle">Автоматично вибирати найшвидший проксі</string>
@@ -471,10 +479,47 @@
     <string name="disable_proxy_title">Вимкнути проксі</string>
     <string name="connected_directly_subtitle">Пряме підключення</string>
     <string name="switch_to_direct_subtitle">Перемкнутися на пряме з\'єднання</string>
-    <string name="telega_proxy_header">Telega Proxy</string>
-    <string name="telega_proxy_subtitle">Telega Proxy звинувачували у перехопленні трафіку. MTProto захищає дані повідомлень від перехоплення, але використовуйте цей проксі на власний ризик. Докладніше: t.me/telegaru</string>
-    <string name="enable_telega_proxy_title">Увімкнути Telega Proxy</string>
-    <string name="enable_telega_proxy_subtitle">Автоматичне отримання та перемикання</string>
+    <string name="proxy_network_rules_header">Правила мережі</string>
+    <string name="proxy_network_rules_subtitle">Оберіть поведінку проксі для кожного типу мережі</string>
+    <string name="proxy_network_wifi">Wi-Fi</string>
+    <string name="proxy_network_mobile">Мобільна мережа</string>
+    <string name="proxy_network_vpn">VPN</string>
+    <string name="proxy_network_other">Інші мережі</string>
+    <string name="proxy_network_mode_direct">Без проксі</string>
+    <string name="proxy_network_mode_best">Найкращий проксі</string>
+    <string name="proxy_network_mode_last_used">Останній використаний</string>
+    <string name="proxy_network_mode_specific">Конкретний проксі</string>
+    <string name="proxy_network_mode_direct_subtitle">Завжди підключатися напряму в цій мережі</string>
+    <string name="proxy_network_mode_best_subtitle">Обирати найшвидший доступний проксі в цій мережі</string>
+    <string name="proxy_network_mode_last_used_subtitle">Повторно використовувати останній проксі для цієї мережі</string>
+    <string name="proxy_network_mode_specific_subtitle">Завжди використовувати вибраний проксі в цій мережі</string>
+    <string name="proxy_specific_target_format">Конкретний: %1$s:%2$d</string>
+    <string name="proxy_list_behavior_header">Поведінка списку</string>
+    <string name="proxy_sort_mode_title">Сортування проксі</string>
+    <string name="proxy_sort_mode_subtitle">Оберіть порядок відображення списку проксі</string>
+    <string name="proxy_sort_mode_active_first">Активний спочатку</string>
+    <string name="proxy_sort_mode_lowest_ping">Найменша затримка</string>
+    <string name="proxy_sort_mode_server_name">Назва сервера</string>
+    <string name="proxy_sort_mode_proxy_type">Тип проксі</string>
+    <string name="proxy_sort_mode_status">Статус</string>
+    <string name="proxy_unavailable_fallback_title">Якщо вибраний проксі недоступний</string>
+    <string name="proxy_unavailable_fallback_subtitle">Поведінка для режимів «конкретний» та «останній»</string>
+    <string name="proxy_fallback_best_proxy">Перемикатися на найкращий проксі</string>
+    <string name="proxy_fallback_direct">Перемикатися на пряме з\'єднання</string>
+    <string name="proxy_fallback_keep_current">Залишати поточний стан</string>
+    <string name="hide_offline_proxies_title">Приховувати офлайн-проксі</string>
+    <string name="hide_offline_proxies_subtitle">Показувати лише доступні або неперевірені проксі</string>
+    <string name="proxy_export_action">Експорт проксі</string>
+    <string name="proxy_import_action">Імпорт проксі</string>
+    <string name="proxy_export_success">Список проксі експортовано</string>
+    <string name="proxy_export_failed">Не вдалося експортувати список проксі</string>
+    <string name="proxy_import_failed">Не вдалося прочитати файл імпорту</string>
+    <string name="proxy_action_set_favorite">Додати в обране</string>
+    <string name="proxy_action_remove_favorite">Прибрати з обраного</string>
+    <string name="proxy_action_copy_link">Скопіювати як посилання</string>
+    <string name="proxy_action_edit">Змінити проксі</string>
+    <string name="proxy_action_delete">Видалити проксі</string>
+    <string name="proxy_link_copied">Посилання на проксі скопійовано</string>
     <string name="refresh_list_title">Оновити список</string>
     <string name="refresh_list_subtitle">Отримати актуальні проксі від спільноти</string>
     <string name="your_proxies_header">Ваші проксі</string>
@@ -485,6 +530,7 @@
     <string name="remove_all_proxies_title">Видалити всі проксі</string>
     <string name="remove_all_proxies_confirmation">Ця дія видалить усі налаштовані проксі з застосунку. Продовжити?</string>
     <string name="no_proxies_label">Немає доданих проксі</string>
+    <string name="no_proxies_match_filter_label">Немає проксі, що відповідають поточним фільтрам</string>
     <string name="delete_proxy_title">Видалити проксі</string>
     <string name="delete_proxy_confirmation_format">Ви впевнені, що хочете видалити проксі %1$s?</string>
     <string name="new_proxy_title">Новий проксі</string>
@@ -494,7 +540,7 @@
     <string name="secret_hex_placeholder">Секрет (Hex)</string>
     <string name="username_optional_placeholder">Ім\'я користувача (опціонально)</string>
     <string name="password_optional_placeholder">Пароль (опціонально)</string>
-    <string name="save_changes_button">Зберегти зміни</string>
+    <string name="save_changes_button">Зберегти</string>
     <string name="test_proxy_button">Перевірити</string>
     <string name="test_proxy_result">Результат перевірки</string>
     <string name="action_delete">Видалити</string>
@@ -557,7 +603,6 @@
     <string name="message_letter_spacing_title">Міжлітерний інтервал повідомлень</string>
     <string name="bubble_rounding_title">Скруглення блоків</string>
     <string name="sticker_size_title">Розмір стікерів</string>
-    <string name="reset_button">Скинути</string>
     <string name="chat_wallpaper_header">Шпалери чату</string>
     <string name="reset_wallpaper_cd">Скинути шпалери</string>
     <string name="upload_wallpaper_cd">Завантажити шпалери</string>
@@ -598,6 +643,8 @@
     <string name="show_link_previews_subtitle">Відображати прев\'ю для посилань у повідомленнях</string>
     <string name="drag_to_back_title">Свайп для повернення</string>
     <string name="drag_to_back_subtitle">Повернення назад свайпом від лівого краю</string>
+    <string name="tablet_interface_title">Планшетний інтерфейс</string>
+    <string name="tablet_interface_subtitle">Використовувати розділений інтерфейс на планшетах</string>
     <string name="two_line_label">Дві рядки</string>
     <string name="three_line_label">Три рядки</string>
     <string name="show_photos_title">Показувати фотографії</string>
@@ -964,6 +1011,7 @@
     <string name="action_cancel">Скасувати</string>
     <string name="action_copy">Копіювати</string>
     <string name="action_paste">Вставити</string>
+    <string name="action_paste_image">Вставити зображення</string>
     <string name="action_cut">Вирізати</string>
     <string name="action_select_all">Виділити все</string>
     <string name="action_apply">Застосувати</string>
@@ -1064,6 +1112,20 @@
     <string name="notification_service_stop">Зупинити</string>
     <string name="notification_service_channel_name">Фонова робота</string>
     <string name="notification_service_channel_description">Сповіщення про роботу програми у фоновому режимі</string>
+    <string name="notification_new_message">Нове повідомлення</string>
+    <string name="notification_person_me">Я</string>
+    <string name="notification_summary_title_format">%1$d повідомлень із %2$d чатів</string>
+    <string name="notification_summary_text_format">%1$d чатів</string>
+    <string name="notification_group_chats">Чати</string>
+    <string name="notification_group_other">Інше</string>
+    <string name="notification_channel_private_name">Приватні чати</string>
+    <string name="notification_channel_private_description">Сповіщення з приватних чатів</string>
+    <string name="notification_channel_groups_name">Групи</string>
+    <string name="notification_channel_groups_description">Сповіщення з груп</string>
+    <string name="notification_channel_channels_name">Канали</string>
+    <string name="notification_channel_channels_description">Сповіщення з каналів</string>
+    <string name="notification_channel_other_name">Інше</string>
+    <string name="notification_channel_other_description">Інші сповіщення</string>
 
     <!-- Chat Mapper / Media Types -->
     <string name="chat_mapper_photo">📷 Фото</string>
@@ -1260,6 +1322,12 @@
     <string name="empty_links">Посилань не знайдено</string>
     <string name="empty_gifs">GIF не знайдено</string>
     <string name="label_bot_badge">БОТ</string>
+    <string name="label_scam_badge">ШАХРАЙСТВО</string>
+    <string name="label_fake_badge">ФЕЙК</string>
+    <string name="unofficial_app_title">Використовує неофіційний застосунок</string>
+    <string name="unofficial_app_subtitle">Цей акаунт використовує неофіційний клієнт Telegram</string>
+    <string name="bot_verification_title">Перевірка бота</string>
+    <string name="bot_verification_subtitle">Підтверджено стороннім ботом</string>
     <string name="opening_hours_closed">Зачинено</string>
     <string name="label_id">ID</string>
 
@@ -1319,6 +1387,10 @@
     <string name="statistics_vs_previous"> порівняно з минулим пер.</string>
     <string name="statistics_unknown_type">Невідомий тип статистики</string>
     <string name="statistics_data_class_format">Клас даних: %1$s</string>
+    <string name="profile_statistics_preview_contact_format">Контакт: %1$s</string>
+    <string name="profile_statistics_preview_venue_format">Місце: %1$s</string>
+    <string name="profile_statistics_preview_poll_format">Опитування: %1$s</string>
+    <string name="profile_statistics_preview_service_message">Службове повідомлення</string>
 
     <!-- Selection: Viewer Common -->
     <string name="viewer_back">Назад</string>
@@ -1564,7 +1636,6 @@
     <string name="logs_media_unsupported">Непідтримуване повідомлення</string>
 
     <!-- Date and Formats -->
-    <string name="format_time">HH:mm</string>
     <string name="format_duration">%1$02d:%2$02d</string>
 
     <!-- Views Count -->
@@ -1679,6 +1750,17 @@
     <string name="mini_app_permission_request">Запит на дозвіл</string>
     <string name="mini_app_allow">Дозволити</string>
     <string name="mini_app_deny">Відхилити</string>
+    <string name="mini_app_permission_biometry">Біометрія</string>
+    <string name="mini_app_share_contact_title">Поділитися контактом</string>
+    <string name="mini_app_share_contact_message">Дозволити %1$s доступ до вашого номера телефону?</string>
+    <string name="mini_app_allow_messages_title">Дозволити повідомлення</string>
+    <string name="mini_app_allow_messages_message">Дозволити %1$s надсилати вам повідомлення?</string>
+    <string name="mini_app_download_file_title">Завантажити файл</string>
+    <string name="mini_app_download_file_message_generic">Завантажити цей файл?</string>
+    <string name="mini_app_download_file_message_named">Завантажити %1$s?</string>
+    <string name="mini_app_biometric_auth_title">Біометрична автентифікація</string>
+    <string name="mini_app_biometric_auth_subtitle">Підтвердьте особу, щоб продовжити</string>
+    <string name="mini_app_request_location_access_message">Дозволити цьому боту доступ до вашого місцезнаходження?</string>
     <string name="mini_app_bot_permissions">Дозволи бота</string>
     <string name="mini_app_tos_title">Умови використання</string>
     <string name="mini_app_tos_text">Запускаючи цей мінідодаток, ви погоджуєтеся з Умовами надання послуг та Політикою конфіденційності. Бот отримає доступ до основної інформації вашого профілю.</string>
@@ -1894,6 +1976,9 @@
     <string name="editor_word_count">%1$d слів</string>
     <string name="editor_reading_time">≈%1$d хв читання</string>
     <string name="editor_autosave_done">Чернетку збережено</string>
+    <string name="editor_action_copy">Копіювати</string>
+    <string name="editor_action_cut">Вирізати</string>
+    <string name="editor_action_paste">Вставити</string>
     <string name="editor_ai">AI</string>
     <string name="editor_ai_title">AI-редактор</string>
     <string name="editor_ai_tab_translate">Переклад</string>

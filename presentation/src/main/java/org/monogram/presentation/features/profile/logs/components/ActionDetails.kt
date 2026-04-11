@@ -51,11 +51,12 @@ import org.monogram.domain.models.ChatEventActionModel
 import org.monogram.domain.models.ChatPermissionsModel
 import org.monogram.presentation.R
 import org.monogram.presentation.core.ui.Avatar
+import org.monogram.presentation.di.LocalAppContainer
 import org.monogram.presentation.features.profile.logs.ProfileLogsComponent
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
+import androidx.compose.ui.platform.LocalLocale
 
 @Composable
 fun ActionDetails(
@@ -141,8 +142,11 @@ fun ActionDetails(
 
                 if (action.untilDate > 0) {
                     val date = Date(action.untilDate.toLong() * 1000)
+                    val appContainer = LocalAppContainer.current
+                    val dateFormatManager = appContainer.utils.dateFormatManager
+                    val timeFormat = dateFormatManager.getHourMinuteFormat()
                     val dateText =
-                        SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault()).format(date)
+                        SimpleDateFormat("MMM dd, yyyy $timeFormat", LocalLocale.current.platformLocale).format(date)
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(top = 8.dp)

@@ -1,14 +1,41 @@
 package org.monogram.presentation.features.chats.chatList.components
 
-import androidx.compose.animation.*
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.*
+import androidx.compose.material.icons.rounded.AlternateEmail
+import androidx.compose.material.icons.rounded.Bookmark
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Done
+import androidx.compose.material.icons.rounded.DoneAll
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.Forum
+import androidx.compose.material.icons.rounded.NotificationsOff
+import androidx.compose.material.icons.rounded.PushPin
+import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -29,17 +56,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import org.monogram.core.date.toDate
 import org.monogram.domain.models.ChatModel
 import org.monogram.domain.models.MessageEntityType
 import org.monogram.presentation.R
 import org.monogram.presentation.core.ui.AvatarForChat
 import org.monogram.presentation.core.ui.TypingDots
 import org.monogram.presentation.core.util.toShortRelativeDate
+import org.monogram.presentation.di.LocalAppContainer
 import org.monogram.presentation.features.chats.currentChat.components.chats.addEmojiStyle
 import org.monogram.presentation.features.chats.currentChat.components.chats.buildAnnotatedMessageTextWithEmoji
 import org.monogram.presentation.features.chats.currentChat.components.chats.rememberMessageInlineContent
 import org.monogram.presentation.features.stickers.ui.view.StickerImage
-import org.monogram.core.date.toDate
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -59,8 +87,8 @@ fun ChatListItem(
 
     val backgroundColor by animateColorAsState(
         targetValue = when {
+            isTabletSelected -> MaterialTheme.colorScheme.primaryContainer
             isSelected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-            isTabletSelected -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
             chat.isPinned -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
             else -> Color.Transparent
         },
@@ -71,7 +99,7 @@ fun ChatListItem(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 8.dp, vertical = 2.dp)
-            .clip(RoundedCornerShape(24))
+            .clip(RoundedCornerShape(12.dp))
             .background(backgroundColor)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 8.dp, vertical = 8.dp)
@@ -192,7 +220,11 @@ private fun ChatListItemHeader(
     chat: ChatModel,
     isSavedMessages: Boolean
 ) {
-    val chatTime = chat.lastMessageDate.toDate().toShortRelativeDate()
+    val appContainer = LocalAppContainer.current
+    val dateFormatManager = appContainer.utils.dateFormatManager
+    val timeFormat = dateFormatManager.getHourMinuteFormat()
+    val chatTime = chat.lastMessageDate.toDate().toShortRelativeDate(timeFormat)
+    val savedMessagesTitle = stringResource(R.string.menu_saved_messages)
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -210,13 +242,15 @@ private fun ChatListItemHeader(
                 Spacer(Modifier.width(4.dp))
             }
             Text(
-                text = if (isSavedMessages) stringResource(R.string.menu_saved_messages) else chat.title,
+                text = if (isSavedMessages) savedMessagesTitle else chat.title,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.semantics { contentDescription = "ChatTitle" }
+                modifier = Modifier.semantics {
+                    contentDescription = if (isSavedMessages) savedMessagesTitle else chat.title
+                }
             )
 
             if (!isSavedMessages && chat.isMuted) {

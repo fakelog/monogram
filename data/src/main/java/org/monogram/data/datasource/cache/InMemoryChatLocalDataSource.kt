@@ -90,6 +90,7 @@ class InMemoryChatLocalDataSource : ChatLocalDataSource {
     }
 
     override suspend fun updateMessageContent(
+        chatId: Long,
         messageId: Long,
         content: String,
         contentType: String,
@@ -98,27 +99,36 @@ class InMemoryChatLocalDataSource : ChatLocalDataSource {
         mediaPath: String?,
         editDate: Int
     ) {
-        messages.values.forEach { flow ->
-            val current = flow.value[messageId] ?: return@forEach
-            flow.update {
-                it + (messageId to current.copy(
-                    content = content,
-                    contentType = contentType,
-                    contentMeta = contentMeta,
-                    mediaFileId = mediaFileId,
-                    mediaPath = mediaPath,
-                    editDate = editDate
-                ))
-            }
+        val flow = messages[chatId] ?: return
+        val current = flow.value[messageId] ?: return
+        flow.update {
+            it + (messageId to current.copy(
+                content = content,
+                contentType = contentType,
+                contentMeta = contentMeta,
+                mediaFileId = mediaFileId,
+                mediaPath = mediaPath,
+                editDate = editDate
+            ))
         }
     }
 
-    override suspend fun updateMediaPath(fileId: Int, path: String) {
+    override suspend fun updateMediaPath(chatId: Long, messageId: Long, fileId: Int, path: String) {
+        val flow = messages[chatId] ?: return
+        val current = flow.value[messageId] ?: return
+        if (current.mediaFileId != fileId || fileId == 0) return
+        flow.update {
+            it + (messageId to current.copy(mediaPath = path))
+        }
+    }
+
+    override suspend fun clearCachedMediaPaths() {
+        val mediaTypes = setOf("photo", "video", "video_note", "document", "gif", "voice", "sticker", "audio")
         messages.values.forEach { flow ->
             flow.update { current ->
                 current.mapValues { (_, message) ->
-                    if (message.mediaFileId == fileId) {
-                        message.copy(mediaPath = path)
+                    if (message.contentType in mediaTypes && (message.mediaPath != null || message.mediaThumbnailPath != null)) {
+                        message.copy(mediaPath = null, mediaThumbnailPath = null)
                     } else {
                         message
                     }
@@ -127,17 +137,38 @@ class InMemoryChatLocalDataSource : ChatLocalDataSource {
         }
     }
 
-    override suspend fun updateInteractionInfo(messageId: Long, viewCount: Int, forwardCount: Int, replyCount: Int) {
-        messages.values.forEach { flow ->
-            val current = flow.value[messageId] ?: return@forEach
-            flow.update {
-                it + (messageId to current.copy(viewCount = viewCount, forwardCount = forwardCount, replyCount = replyCount))
+    override suspend fun clearCachedChatAvatarPaths() {
+        chats.update { current ->
+            current.mapValues { (_, chat) ->
+                if (chat.avatarPath != null) {
+                    chat.copy(avatarPath = null)
+                } else {
+                    chat
+                }
             }
         }
     }
 
-    override suspend fun deleteMessage(messageId: Long) {
-        messages.values.forEach { flow ->
+    override suspend fun updateInteractionInfo(
+        chatId: Long,
+        messageId: Long,
+        viewCount: Int,
+        forwardCount: Int,
+        replyCount: Int
+    ) {
+        val flow = messages[chatId] ?: return
+        val current = flow.value[messageId] ?: return
+        flow.update {
+            it + (messageId to current.copy(
+                viewCount = viewCount,
+                forwardCount = forwardCount,
+                replyCount = replyCount
+            ))
+        }
+    }
+
+    override suspend fun deleteMessage(chatId: Long, messageId: Long) {
+        messages[chatId]?.let { flow ->
             if (flow.value.containsKey(messageId)) {
                 flow.update { it - messageId }
             }

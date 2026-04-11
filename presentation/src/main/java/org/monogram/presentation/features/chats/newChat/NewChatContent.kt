@@ -46,6 +46,7 @@ import org.monogram.presentation.core.ui.ItemPosition
 import org.monogram.presentation.core.ui.shimmerBackground
 import org.monogram.presentation.core.util.FileUtils
 import org.monogram.presentation.core.util.getUserStatusText
+import org.monogram.presentation.di.LocalAppContainer
 import org.monogram.presentation.features.chats.chatList.components.NewChannelContent
 import org.monogram.presentation.features.chats.chatList.components.NewGroupContent
 import org.monogram.presentation.features.chats.chatList.components.SectionHeader
@@ -621,6 +622,9 @@ private fun ContactItem(
     onRemoveContact: () -> Unit
 ) {
     val context = LocalContext.current
+    val appContainer = LocalAppContainer.current
+    val dateFormatManager = appContainer.utils.dateFormatManager
+    val timeFormat = dateFormatManager.getHourMinuteFormat()
     val isSupport = user.isSupport
     var showMenu by remember { mutableStateOf(false) }
     val cornerRadius = 24.dp
@@ -684,7 +688,7 @@ private fun ContactItem(
                             color = MaterialTheme.colorScheme.onSurface
                         )
                     } else {
-                        val statusText = getUserStatusText(user, context)
+                        val statusText = getUserStatusText(user, context, timeFormat)
                         Text(
                             text = statusText,
                             style = MaterialTheme.typography.bodySmall,

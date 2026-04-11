@@ -2,6 +2,8 @@ package org.monogram.data.chats
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import org.drinkless.tdlib.TdApi
 import org.monogram.core.DispatcherProvider
 import org.monogram.data.core.coRunCatching
@@ -29,6 +31,7 @@ class ChatModelFactory(
     private val fetchUser: (Long) -> Unit
 ) {
     private val missingUserFullInfoUntilMs = ConcurrentHashMap<Long, Long>()
+    private val userFullInfoSemaphore = Semaphore(permits = 3)
 
     fun mapChatToModel(
         chat: TdApi.Chat,
@@ -46,6 +49,17 @@ class ChatModelFactory(
         var isOnline = false
         var userStatus = ""
         var isVerified = isForcedVerifiedChat(chat.id)
+        var isScam = false
+        var isFake = false
+        var botVerificationIconCustomEmojiId = 0L
+        var restrictionReason: String? = null
+        var hasSensitiveContent = false
+        var activeStoryStateType: String? = null
+        var activeStoryId = 0
+        var boostLevel = 0
+        var hasForumTabs = false
+        var isAdministeredDirectMessagesGroup = false
+        var paidMessageStarCount = 0L
         var isForum = false
         var isBot = false
         var isMember = true
@@ -93,6 +107,17 @@ class ChatModelFactory(
                 supergroup?.let {
                     memberCount = it.memberCount
                     isVerified = (it.verificationStatus?.isVerified ?: false) || isForcedVerifiedChat(chat.id)
+                    isScam = it.verificationStatus?.isScam ?: false
+                    isFake = it.verificationStatus?.isFake ?: false
+                    botVerificationIconCustomEmojiId = it.verificationStatus?.botVerificationIconCustomEmojiId ?: 0L
+                    restrictionReason = it.restrictionInfo?.restrictionReason?.ifEmpty { null }
+                    hasSensitiveContent = it.restrictionInfo?.hasSensitiveContent ?: false
+                    activeStoryStateType = it.activeStoryState.toTypeString()
+                    activeStoryId = (it.activeStoryState as? TdApi.ActiveStoryStateLive)?.storyId ?: 0
+                    boostLevel = it.boostLevel
+                    hasForumTabs = it.hasForumTabs
+                    isAdministeredDirectMessagesGroup = it.isAdministeredDirectMessagesGroup
+                    paidMessageStarCount = it.paidMessageStarCount
                     isForum = it.isForum
                     isMember = it.status !is TdApi.ChatMemberStatusLeft
                     isAdmin = it.status is TdApi.ChatMemberStatusAdministrator ||
@@ -133,6 +158,14 @@ class ChatModelFactory(
                     if (isOnline) onlineCount = 1
                     userStatus = chatMapper.formatUserStatus(user.status, isBot)
                     isVerified = (user.verificationStatus?.isVerified ?: false) || isForcedVerifiedUser(user.id)
+                    isScam = user.verificationStatus?.isScam ?: false
+                    isFake = user.verificationStatus?.isFake ?: false
+                    botVerificationIconCustomEmojiId = user.verificationStatus?.botVerificationIconCustomEmojiId ?: 0L
+                    restrictionReason = user.restrictionInfo?.restrictionReason?.ifEmpty { null }
+                    hasSensitiveContent = user.restrictionInfo?.hasSensitiveContent ?: false
+                    activeStoryStateType = user.activeStoryState.toTypeString()
+                    activeStoryId = (user.activeStoryState as? TdApi.ActiveStoryStateLive)?.storyId ?: 0
+                    paidMessageStarCount = user.paidMessageStarCount
                     isSponsor = isSponsoredUser(user.id)
                     username = user.usernames?.activeUsernames?.firstOrNull()
                     usernames = user.usernames?.toDomain()
@@ -150,6 +183,10 @@ class ChatModelFactory(
                         if (!isUserFullInfoTemporarilyMissing(type.userId)) {
                             lazyLoad(cache.pendingUserFullInfo, type.userId) {
                                 if (type.userId == 0L) return@lazyLoad
+                                cache.userFullInfoCache[type.userId]?.let {
+                                    triggerUpdate(chat.id)
+                                    return@lazyLoad
+                                }
                                 val cachedInfo = coRunCatching {
                                     userFullInfoDao.getUserFullInfo(type.userId)?.toTdApi()
                                 }.getOrNull()
@@ -159,7 +196,11 @@ class ChatModelFactory(
                                     triggerUpdate(chat.id)
                                     return@lazyLoad
                                 }
-                                val result = coRunCatching { gateway.execute(TdApi.GetUserFullInfo(type.userId)) }.getOrNull()
+                                val result = userFullInfoSemaphore.withPermit {
+                                    cache.userFullInfoCache[type.userId] ?: coRunCatching {
+                                        gateway.execute(TdApi.GetUserFullInfo(type.userId))
+                                    }.getOrNull()
+                                }
                                 if (result != null) {
                                     cache.putUserFullInfo(type.userId, result)
                                     coRunCatching { userFullInfoDao.insertUserFullInfo(result.toEntity(type.userId)) }
@@ -239,6 +280,17 @@ class ChatModelFactory(
             isOnline = isOnline,
             userStatus = userStatus,
             isVerified = isVerified,
+            isScam = isScam,
+            isFake = isFake,
+            botVerificationIconCustomEmojiId = botVerificationIconCustomEmojiId,
+            restrictionReason = restrictionReason,
+            hasSensitiveContent = hasSensitiveContent,
+            activeStoryStateType = activeStoryStateType,
+            activeStoryId = activeStoryId,
+            boostLevel = boostLevel,
+            hasForumTabs = hasForumTabs,
+            isAdministeredDirectMessagesGroup = isAdministeredDirectMessagesGroup,
+            paidMessageStarCount = paidMessageStarCount,
             isSponsor = isSponsor,
             isForum = isForum,
             isBot = isBot,
@@ -328,5 +380,14 @@ class ChatModelFactory(
 
     companion object {
         private const val USER_FULL_INFO_RETRY_TTL_MS = 5 * 60 * 1000L
+    }
+}
+
+private fun TdApi.ActiveStoryState?.toTypeString(): String? {
+    return when (this) {
+        is TdApi.ActiveStoryStateLive -> "LIVE"
+        is TdApi.ActiveStoryStateUnread -> "UNREAD"
+        is TdApi.ActiveStoryStateRead -> "READ"
+        else -> null
     }
 }

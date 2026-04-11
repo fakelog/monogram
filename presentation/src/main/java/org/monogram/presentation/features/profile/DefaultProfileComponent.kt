@@ -3,12 +3,42 @@ package org.monogram.presentation.features.profile
 import com.arkivanov.decompose.value.MutableValue
 import com.arkivanov.decompose.value.Value
 import com.arkivanov.decompose.value.update
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
-import org.monogram.domain.models.*
-import org.monogram.domain.repository.*
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import org.monogram.domain.models.BotMenuButtonModel
+import org.monogram.domain.models.ChatInteractionType
+import org.monogram.domain.models.ChatPermissionsModel
+import org.monogram.domain.models.ChatRevenueStatisticsModel
+import org.monogram.domain.models.ChatStatisticsModel
+import org.monogram.domain.models.FileDownloadEvent
+import org.monogram.domain.models.MessageContent
+import org.monogram.domain.models.MessageModel
+import org.monogram.domain.models.StatisticsGraphModel
+import org.monogram.domain.models.UserTypeEnum
+import org.monogram.domain.repository.BotPreferencesProvider
+import org.monogram.domain.repository.BotRepository
+import org.monogram.domain.repository.ChatInfoRepository
+import org.monogram.domain.repository.ChatListRepository
+import org.monogram.domain.repository.ChatMemberStatus
+import org.monogram.domain.repository.ChatMembersFilter
+import org.monogram.domain.repository.ChatOperationsRepository
+import org.monogram.domain.repository.ChatSettingsRepository
+import org.monogram.domain.repository.ChatStatisticsRepository
+import org.monogram.domain.repository.GifRepository
+import org.monogram.domain.repository.LocationRepository
+import org.monogram.domain.repository.MessageRepository
+import org.monogram.domain.repository.PrivacyRepository
+import org.monogram.domain.repository.ProfileMediaFilter
+import org.monogram.domain.repository.ProfilePhotoRepository
+import org.monogram.domain.repository.UserRepository
 import org.monogram.presentation.core.util.IDownloadUtils
 import org.monogram.presentation.core.util.coRunCatching
 import org.monogram.presentation.core.util.componentScope
@@ -39,7 +69,9 @@ class DefaultProfileComponent(
     private val privacyRepository: PrivacyRepository = container.repositories.privacyRepository
     override val messageRepository: MessageRepository = container.repositories.messageRepository
     private val locationRepository: LocationRepository = container.repositories.locationRepository
+    private val gifRepository: GifRepository = container.repositories.gifRepository
     private val botPreferences: BotPreferencesProvider = container.preferences.botPreferencesProvider
+    private val stringProvider = container.utils.stringProvider()
     override val downloadUtils: IDownloadUtils = container.utils.downloadUtils()
 
     private val scope = componentScope
@@ -579,7 +611,7 @@ class DefaultProfileComponent(
                 }
             }
             is MessageContent.Location -> {
-                onLocationClick(content.latitude, content.longitude, "Location")
+                onLocationClick(content.latitude, content.longitude, stringProvider.getString("location_label"))
             }
 
             is MessageContent.Venue -> {
@@ -691,12 +723,90 @@ class DefaultProfileComponent(
         _state.update {
             it.copy(
                 fullScreenImages = null,
+                fullScreenImageMessageIds = emptyList(),
                 fullScreenCaptions = emptyList(),
                 fullScreenVideoPath = null,
+                fullScreenVideoMessageId = null,
                 fullScreenVideoCaption = null,
                 isViewingProfilePhotos = false,
                 isProfilePhotoHdLoading = false
             )
+        }
+    }
+
+    override fun onDismissImages() {
+        onDismissViewer()
+    }
+
+    override fun onDismissVideo() {
+        onDismissViewer()
+    }
+
+    override fun onDismissInstantView() {
+        _state.update { it.copy(instantViewUrl = null) }
+    }
+
+    override fun onDismissYouTube() {
+        _state.update { it.copy(youtubeUrl = null) }
+    }
+
+    override fun onDismissWebView() {
+        _state.update { it.copy(webViewUrl = null) }
+    }
+
+    override fun onDismissInvoice(status: String?) {
+        _state.update { it.copy(invoiceSlug = null, invoiceMessageId = null) }
+    }
+
+    override fun onForwardMessage(message: MessageModel) {
+        onMessageLongClicked(message)
+    }
+
+    override fun onDeleteMessage(message: MessageModel, revoke: Boolean) {
+        scope.launch {
+            messageRepository.deleteMessage(chatId, listOf(message.id), revoke)
+        }
+    }
+
+    override fun onOpenVideo(path: String, messageId: Long?, caption: String?) {
+        _state.update {
+            it.copy(
+                fullScreenVideoPath = path,
+                fullScreenVideoMessageId = messageId,
+                fullScreenVideoCaption = caption,
+                fullScreenImages = null
+            )
+        }
+    }
+
+    override fun onDownloadHighRes(messageId: Long) {
+        scope.launch {
+            val fileId = messageRepository.getHighResFileId(chatId, messageId)
+            if (fileId != null && fileId != 0) {
+                messageRepository.downloadFile(fileId, priority = 32)
+            }
+        }
+    }
+
+    override fun onAddToGifs(path: String) {
+        scope.launch {
+            gifRepository.addSavedGif(path)
+        }
+    }
+
+    override fun onOpenWebView(url: String) {
+        _state.update { it.copy(webViewUrl = url) }
+    }
+
+    override fun onDismissMiniAppTOS() {
+        _state.update { it.copy(showMiniAppTOS = false) }
+    }
+
+    override fun onAcceptMiniAppTOS() {
+        val botId = _state.value.user?.id ?: return
+        scope.launch {
+            botPreferences.setWebappPermission(botId, "tos_accepted", true)
+            _state.update { it.copy(showMiniAppTOS = false, isTOSAccepted = true) }
         }
     }
 
@@ -763,12 +873,12 @@ class DefaultProfileComponent(
         }
 
         val completed = withTimeoutOrNull(timeoutMs) {
-            messageRepository.messageDownloadCompletedFlow.first { (_, completedFileId, path) ->
-                completedFileId == fileId && path.isNotEmpty()
-            }
+            messageRepository.fileDownloadFlow
+                .filterIsInstance<FileDownloadEvent.Completed>()
+                .first { event -> event.fileId == fileId && event.path.isNotEmpty() }
         }
         if (completed != null) {
-            return completed.third
+            return completed.path
         }
 
         val fallback = messageRepository.getFileInfo(fileId)
@@ -986,9 +1096,9 @@ class DefaultProfileComponent(
     override fun onShowPermissions() {
         val botId = _state.value.user?.id ?: return
         val permissions = mapOf(
-            "Location" to botPreferences.getWebappPermission(botId, "location"),
-            "Biometry" to botPreferences.getWebappPermission(botId, "biometry"),
-            "Terms of Service" to botPreferences.getWebappPermission(botId, "tos_accepted")
+            stringProvider.getString("location_label") to botPreferences.getWebappPermission(botId, "location"),
+            stringProvider.getString("mini_app_permission_biometry") to botPreferences.getWebappPermission(botId, "biometry"),
+            stringProvider.getString("terms_of_service_title") to botPreferences.getWebappPermission(botId, "tos_accepted")
         )
         _state.update { it.copy(isPermissionsVisible = true, botPermissions = permissions) }
     }
@@ -1000,9 +1110,9 @@ class DefaultProfileComponent(
     override fun onTogglePermission(permission: String) {
         val botId = _state.value.user?.id ?: return
         val key = when (permission) {
-            "Location" -> "location"
-            "Biometry" -> "biometry"
-            "Terms of Service" -> "tos_accepted"
+            stringProvider.getString("location_label") -> "location"
+            stringProvider.getString("mini_app_permission_biometry") -> "biometry"
+            stringProvider.getString("terms_of_service_title") -> "tos_accepted"
             else -> return
         }
         val current = botPreferences.getWebappPermission(botId, key)
@@ -1044,10 +1154,12 @@ class DefaultProfileComponent(
     override fun onLocationClick(lat: Double, lon: Double, address: String) {
         scope.launch {
             var finalAddress = address
-            if (address == "Location") {
+            if (address == stringProvider.getString("location_label")) {
                 val reverse = locationRepository.reverseGeocode(lat, lon)
                 if (reverse != null) {
-                    finalAddress = reverse.address?.city ?: reverse.address?.toString() ?: "Location"
+                    finalAddress = reverse.address?.city
+                        ?: reverse.address?.toString()
+                        ?: stringProvider.getString("location_label")
                 }
             }
             _state.update {
@@ -1083,21 +1195,27 @@ class DefaultProfileComponent(
 
     private fun MessageContent.toStatisticsPreview(): String {
         return when (this) {
-            is MessageContent.Text -> text.ifBlank { "Message" }
-            is MessageContent.Photo -> caption.ifBlank { "Photo" }
-            is MessageContent.Video -> caption.ifBlank { "Video" }
-            is MessageContent.Gif -> caption.ifBlank { "GIF" }
-            is MessageContent.Document -> caption.ifBlank { fileName.ifBlank { "Document" } }
-            is MessageContent.Audio -> caption.ifBlank { title.ifBlank { "Audio" } }
-            is MessageContent.Voice -> "Voice message"
-            is MessageContent.VideoNote -> "Video message"
-            is MessageContent.Sticker -> "Sticker ${emoji.ifBlank { "" }}".trim()
-            is MessageContent.Contact -> "Contact: ${firstName} ${lastName}".trim()
-            is MessageContent.Location -> "Location"
-            is MessageContent.Venue -> "Venue: $title"
-            is MessageContent.Poll -> "Poll: $question"
-            is MessageContent.Service -> text.ifBlank { "Service message" }
-            MessageContent.Unsupported -> "Unsupported message"
+            is MessageContent.Text -> text.ifBlank { stringProvider.getString("reply_content_message") }
+            is MessageContent.Photo -> caption.ifBlank { stringProvider.getString("reply_content_photo") }
+            is MessageContent.Video -> caption.ifBlank { stringProvider.getString("reply_content_video") }
+            is MessageContent.Gif -> caption.ifBlank { stringProvider.getString("reply_content_gif") }
+            is MessageContent.Document -> caption.ifBlank { fileName.ifBlank { stringProvider.getString("logs_media_document") } }
+            is MessageContent.Audio -> caption.ifBlank { title.ifBlank { stringProvider.getString("logs_media_audio") } }
+            is MessageContent.Voice -> stringProvider.getString("reply_content_voice_message")
+            is MessageContent.VideoNote -> stringProvider.getString("reply_content_video_message")
+            is MessageContent.Sticker -> listOf(
+                stringProvider.getString("reply_content_sticker"),
+                emoji.ifBlank { "" }
+            ).filter { it.isNotBlank() }.joinToString(" ")
+            is MessageContent.Contact -> stringProvider.getString(
+                "profile_statistics_preview_contact_format",
+                "$firstName $lastName".trim()
+            )
+            is MessageContent.Location -> stringProvider.getString("location_label")
+            is MessageContent.Venue -> stringProvider.getString("profile_statistics_preview_venue_format", title)
+            is MessageContent.Poll -> stringProvider.getString("profile_statistics_preview_poll_format", question)
+            is MessageContent.Service -> text.ifBlank { stringProvider.getString("profile_statistics_preview_service_message") }
+            MessageContent.Unsupported -> stringProvider.getString("logs_media_unsupported")
         }
     }
 
