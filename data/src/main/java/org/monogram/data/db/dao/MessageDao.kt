@@ -9,17 +9,17 @@ import org.monogram.data.db.model.MessageEntity
 
 @Dao
 interface MessageDao {
-    @Query("SELECT * FROM messages WHERE chatId = :chatId ORDER BY date DESC")
-    fun getMessagesForChat(chatId: Long): Flow<List<MessageEntity>>
+    @Query("SELECT * FROM messages WHERE chatId = :chatId AND threadId = :threadId ORDER BY date DESC")
+    fun getMessagesForChat(chatId: Long, threadId: Long): Flow<List<MessageEntity>>
 
-    @Query("SELECT * FROM messages WHERE chatId = :chatId AND id < :fromMessageId ORDER BY date DESC LIMIT :limit")
-    suspend fun getMessagesOlder(chatId: Long, fromMessageId: Long, limit: Int): List<MessageEntity>
+    @Query("SELECT * FROM messages WHERE chatId = :chatId AND threadId = :threadId AND id < :fromMessageId ORDER BY date DESC LIMIT :limit")
+    suspend fun getMessagesOlder(chatId: Long, threadId: Long, fromMessageId: Long, limit: Int): List<MessageEntity>
 
-    @Query("SELECT * FROM messages WHERE chatId = :chatId AND id > :fromMessageId ORDER BY date ASC LIMIT :limit")
-    suspend fun getMessagesNewer(chatId: Long, fromMessageId: Long, limit: Int): List<MessageEntity>
+    @Query("SELECT * FROM messages WHERE chatId = :chatId AND threadId = :threadId AND id > :fromMessageId ORDER BY date ASC LIMIT :limit")
+    suspend fun getMessagesNewer(chatId: Long, threadId: Long, fromMessageId: Long, limit: Int): List<MessageEntity>
 
-    @Query("SELECT * FROM messages WHERE chatId = :chatId ORDER BY date DESC LIMIT :limit")
-    suspend fun getLatestMessages(chatId: Long, limit: Int): List<MessageEntity>
+    @Query("SELECT * FROM messages WHERE chatId = :chatId AND threadId = :threadId ORDER BY date DESC LIMIT :limit")
+    suspend fun getLatestMessages(chatId: Long, threadId: Long, limit: Int): List<MessageEntity>
 
     @Query("UPDATE messages SET isRead = 1 WHERE chatId = :chatId AND id <= :upToMessageId AND isRead = 0")
     suspend fun markAsRead(chatId: Long, upToMessageId: Long)

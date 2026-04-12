@@ -16,6 +16,8 @@ class InMemoryChatLocalDataSource : ChatLocalDataSource {
     private val fullInfos = ConcurrentHashMap<Long, ChatFullInfoEntity>()
     private val topics = ConcurrentHashMap<Long, MutableStateFlow<Map<Int, TopicEntity>>>()
 
+    private fun normalizeThreadId(threadId: Long?): Long = threadId ?: 0L
+
     override fun getAllChats(): Flow<List<ChatEntity>> =
         chats.map {
             it.values.sortedWith(
@@ -49,27 +51,41 @@ class InMemoryChatLocalDataSource : ChatLocalDataSource {
         topics.clear()
     }
 
-    override fun getMessagesForChat(chatId: Long): Flow<List<MessageEntity>> =
+    override fun getMessagesForChat(chatId: Long, threadId: Long?): Flow<List<MessageEntity>> =
         messages.getOrPut(chatId) { MutableStateFlow(emptyMap()) }
-            .map { it.values.sortedByDescending { msg -> msg.date } }
+            .map { current ->
+                current.values
+                    .asSequence()
+                    .filter { it.threadId == normalizeThreadId(threadId) }
+                    .sortedByDescending { msg -> msg.date }
+                    .toList()
+            }
 
-    override suspend fun getMessagesOlder(chatId: Long, fromMessageId: Long, limit: Int): List<MessageEntity> {
+    override suspend fun getMessagesOlder(chatId: Long, fromMessageId: Long, limit: Int, threadId: Long?): List<MessageEntity> {
         val chatMessages = messages[chatId]?.value?.values ?: return emptyList()
-        return chatMessages.filter { it.id < fromMessageId }
+        val normalizedThreadId = normalizeThreadId(threadId)
+        return chatMessages.filter { it.threadId == normalizedThreadId && it.id < fromMessageId }
             .sortedByDescending { it.date }
             .take(limit)
     }
 
-    override suspend fun getMessagesNewer(chatId: Long, fromMessageId: Long, limit: Int): List<MessageEntity> {
+    override suspend fun getMessagesNewer(chatId: Long, fromMessageId: Long, limit: Int, threadId: Long?): List<MessageEntity> {
         val chatMessages = messages[chatId]?.value?.values ?: return emptyList()
-        return chatMessages.filter { it.id > fromMessageId }
+        val normalizedThreadId = normalizeThreadId(threadId)
+        return chatMessages.filter { it.threadId == normalizedThreadId && it.id > fromMessageId }
             .sortedBy { it.date }
             .take(limit)
     }
 
-    override suspend fun getLatestMessages(chatId: Long, limit: Int): List<MessageEntity> {
+    override suspend fun getLatestMessages(chatId: Long, limit: Int, threadId: Long?): List<MessageEntity> {
         val chatMessages = messages[chatId]?.value?.values ?: return emptyList()
-        return chatMessages.sortedByDescending { it.date }.take(limit)
+        val normalizedThreadId = normalizeThreadId(threadId)
+        return chatMessages
+            .asSequence()
+            .filter { it.threadId == normalizedThreadId }
+            .sortedByDescending { it.date }
+            .take(limit)
+            .toList()
     }
 
     override suspend fun insertMessage(message: MessageEntity) {

@@ -56,6 +56,7 @@ internal class MessagePersistenceMapper(
         return MessageDbEntity(
             id = msg.id,
             chatId = msg.chatId,
+            threadId = resolveThreadId(msg),
             senderId = senderId,
             senderName = senderName,
             content = content.text,
@@ -475,10 +476,19 @@ internal class MessagePersistenceMapper(
             views = entity.viewCount,
             viewCount = entity.viewCount,
             replyCount = entity.replyCount,
+            threadId = entity.threadId.takeIf { it != 0L },
             isSenderVerified = cachedSenderUser?.verificationStatus?.isVerified ?: false,
             isSenderPremium = cachedSenderUser?.isPremium ?: false,
             senderStatusEmojiId = senderStatusEmojiId
         )
+    }
+
+    private fun resolveThreadId(msg: TdApi.Message): Long {
+        return when (val topic = msg.topicId) {
+            is TdApi.MessageTopicForum -> topic.forumTopicId.toLong()
+            is TdApi.MessageTopicThread -> topic.messageThreadId
+            else -> 0L
+        }
     }
 
     private fun resolveSenderNameFromCache(senderId: Long, fallback: String): String {

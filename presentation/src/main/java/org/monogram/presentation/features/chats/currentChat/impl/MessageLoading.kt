@@ -357,51 +357,21 @@ private suspend fun DefaultChatComponent.loadBottomMessages(
     lastLoadedOlderId = 0L
     lastLoadedNewerId = 0L
 
-    var hasCachedPreview = false
-    val cachedMessages = repositoryMessage.getCachedMessages(chatId, PAGE_SIZE)
-    if (cachedMessages.isNotEmpty()) {
-        hasCachedPreview = true
-        _state.update {
-            it.copy(
-                isAtBottom = true,
-                isLatestLoaded = false,
-                isOldestLoaded = false,
-                scrollToMessageId = null
-            )
-        }
-        updateMessages(cachedMessages, replace = true)
-        refreshCachedSenderProfiles(cachedMessages)
-    }
-
     val olderPage = repositoryMessage.getMessagesOlder(chatId, 0, PAGE_SIZE, threadId)
     val messages = olderPage.messages
-    val isRemoteSameAsCachedPreview = hasCachedPreview && cachedMessages.isNotEmpty() &&
-            messages.size == cachedMessages.size &&
-            messages.zip(cachedMessages).all { (remote, cached) -> remote.id == cached.id }
-
-    val isOldestLoaded = if (isRemoteSameAsCachedPreview) {
-        false
-    } else {
-        olderPage.reachedOldest
-    }
 
     _state.update {
         it.copy(
             isAtBottom = true,
-            isLatestLoaded = !isRemoteSameAsCachedPreview,
-            isOldestLoaded = isOldestLoaded,
+            isLatestLoaded = true,
+            isOldestLoaded = olderPage.reachedOldest,
             scrollToMessageId = null
         )
     }
-    val shouldReplaceCachedPreview = !hasCachedPreview || messages.isNotEmpty()
-    updateMessages(messages, replace = shouldReplaceCachedPreview)
+    updateMessages(messages, replace = true)
     refreshCachedSenderProfiles(messages)
     if (scrollCommand != null) {
         _state.update { it.copy(pendingScrollCommand = scrollCommand) }
-    }
-    if (!isOldestLoaded) {
-        delay(100)
-        loadMoreMessages()
     }
 }
 

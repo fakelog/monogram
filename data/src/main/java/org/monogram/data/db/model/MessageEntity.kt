@@ -15,6 +15,7 @@ import androidx.room.Index
 data class MessageEntity(
     val id: Long,
     val chatId: Long,
+    val threadId: Long = 0L,
     val senderId: Long,
     val senderName: String = "",
     val content: String,

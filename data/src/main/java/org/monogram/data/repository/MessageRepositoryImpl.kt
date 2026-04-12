@@ -432,7 +432,7 @@ class MessageRepositoryImpl(
     ): OlderMessagesPage =
         withContext(dispatcherProvider.io) {
             val cached = if (fromMessageId == 0L) {
-                val cachedEntities = chatLocalDataSource.getLatestMessages(chatId, limit)
+                val cachedEntities = chatLocalDataSource.getLatestMessages(chatId, limit, threadId)
                 mapLocalMessages(cachedEntities)
             } else {
                 emptyList()
@@ -446,7 +446,7 @@ class MessageRepositoryImpl(
                 val fallbackMessages = if (cached.isNotEmpty()) {
                     cached
                 } else {
-                    val local = chatLocalDataSource.getMessagesOlder(chatId, fromMessageId, limit)
+                    val local = chatLocalDataSource.getMessagesOlder(chatId, fromMessageId, limit, threadId)
                     mapLocalMessages(local)
                 }
                 OlderMessagesPage(
@@ -457,9 +457,9 @@ class MessageRepositoryImpl(
             }
         }
 
-    override suspend fun getCachedMessages(chatId: Long, limit: Int): List<MessageModel> =
+    override suspend fun getCachedMessages(chatId: Long, limit: Int, threadId: Long?): List<MessageModel> =
         withContext(dispatcherProvider.io) {
-            val local = chatLocalDataSource.getLatestMessages(chatId, limit)
+            val local = chatLocalDataSource.getLatestMessages(chatId, limit, threadId)
             mapLocalMessages(local)
         }
 
@@ -475,7 +475,7 @@ class MessageRepositoryImpl(
                 persistRemoteMessages(chatId, remoteMessages)
                 remoteMessages
             } catch (e: Exception) {
-                chatLocalDataSource.getMessagesNewer(chatId, fromMessageId, limit)
+                chatLocalDataSource.getMessagesNewer(chatId, fromMessageId, limit, threadId)
                     .let { mapLocalMessages(it) }
             }
         }
@@ -492,7 +492,7 @@ class MessageRepositoryImpl(
                 persistRemoteMessages(chatId, remoteMessages)
                 remoteMessages
             } catch (e: Exception) {
-                val local = chatLocalDataSource.getLatestMessages(chatId, limit)
+                val local = chatLocalDataSource.getLatestMessages(chatId, limit, threadId)
                 mapLocalMessages(local)
             }
         }

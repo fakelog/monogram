@@ -74,7 +74,7 @@ interface MessageRepository :
         threadId: Long? = null
     ): OlderMessagesPage
 
-    suspend fun getCachedMessages(chatId: Long, limit: Int): List<MessageModel>
+    suspend fun getCachedMessages(chatId: Long, limit: Int, threadId: Long? = null): List<MessageModel>
 
     suspend fun getMessagesNewer(
         chatId: Long,

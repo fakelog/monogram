@@ -19,6 +19,8 @@ class RoomChatLocalDataSource(
     private val chatFullInfoDao: ChatFullInfoDao,
     private val topicDao: TopicDao
 ) : ChatLocalDataSource {
+    private fun normalizeThreadId(threadId: Long?): Long = threadId ?: 0L
+
     override fun getAllChats(): Flow<List<ChatEntity>> = chatDao.getAllChats()
 
     override suspend fun getChat(chatId: Long): ChatEntity? = chatDao.getChat(chatId)
@@ -40,13 +42,17 @@ class RoomChatLocalDataSource(
         }
     }
 
-    override fun getMessagesForChat(chatId: Long): Flow<List<MessageEntity>> = messageDao.getMessagesForChat(chatId)
+    override fun getMessagesForChat(chatId: Long, threadId: Long?): Flow<List<MessageEntity>> =
+        messageDao.getMessagesForChat(chatId, normalizeThreadId(threadId))
 
-    override suspend fun getMessagesOlder(chatId: Long, fromMessageId: Long, limit: Int) = messageDao.getMessagesOlder(chatId, fromMessageId, limit)
+    override suspend fun getMessagesOlder(chatId: Long, fromMessageId: Long, limit: Int, threadId: Long?) =
+        messageDao.getMessagesOlder(chatId, normalizeThreadId(threadId), fromMessageId, limit)
 
-    override suspend fun getMessagesNewer(chatId: Long, fromMessageId: Long, limit: Int) = messageDao.getMessagesNewer(chatId, fromMessageId, limit)
+    override suspend fun getMessagesNewer(chatId: Long, fromMessageId: Long, limit: Int, threadId: Long?) =
+        messageDao.getMessagesNewer(chatId, normalizeThreadId(threadId), fromMessageId, limit)
 
-    override suspend fun getLatestMessages(chatId: Long, limit: Int) = messageDao.getLatestMessages(chatId, limit)
+    override suspend fun getLatestMessages(chatId: Long, limit: Int, threadId: Long?) =
+        messageDao.getLatestMessages(chatId, normalizeThreadId(threadId), limit)
 
     override suspend fun insertMessage(message: MessageEntity) = messageDao.insertMessage(message)
 
