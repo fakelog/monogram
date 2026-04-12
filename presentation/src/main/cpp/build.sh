@@ -1,11 +1,25 @@
 #!/bin/bash
 set -e
 
-# Set ANDROID_NDK_HOME here
-ANDROID_NDK_HOME=/home/fakelog/Android/Sdk/ndk/27.0.12077973/
+NDK_VERSION="${NDK_VERSION:-27.0.12077973}"
+ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-${ANDROID_NDK_ROOT:-}}"
 
 if [ -z "$ANDROID_NDK_HOME" ]; then
-    echo "Error: ANDROID_NDK_HOME is not set."
+    for sdk_root in "$ANDROID_SDK_ROOT" "$ANDROID_HOME"; do
+        if [ -n "$sdk_root" ] && [ -d "$sdk_root/ndk/$NDK_VERSION" ]; then
+            ANDROID_NDK_HOME="$sdk_root/ndk/$NDK_VERSION"
+            break
+        fi
+    done
+fi
+
+if [ -z "$ANDROID_NDK_HOME" ]; then
+    echo "Error: Android NDK not found. Set ANDROID_NDK_HOME or install NDK $NDK_VERSION under ANDROID_SDK_ROOT/ndk."
+    exit 1
+fi
+
+if [ ! -d "$ANDROID_NDK_HOME" ]; then
+    echo "Error: ANDROID_NDK_HOME points to a missing directory: $ANDROID_NDK_HOME"
     exit 1
 fi
 
@@ -18,6 +32,7 @@ HOST_OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 PREBUILT_HOST="${HOST_OS}-x86_64"
 
 echo "Using NDK: $ANDROID_NDK_HOME"
+echo "NDK version: $NDK_VERSION"
 echo "Build Platform: $PREBUILT_HOST"
 
 build_vpx() {

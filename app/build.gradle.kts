@@ -19,7 +19,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "org.monogram"
+        applicationId = "org.medusium"
         minSdk = 25
         targetSdk = 36
         versionCode = 7
@@ -41,7 +41,6 @@ android {
 
     buildTypes {
         release {
-            applicationIdSuffix = "ium"
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
