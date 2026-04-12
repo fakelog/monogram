@@ -4,29 +4,20 @@ package org.monogram.presentation.features.stickers.ui.menu
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentTransitionScope
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.SizeTransform
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.updateTransition
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -46,7 +37,6 @@ import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -83,7 +73,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -94,7 +83,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -112,7 +100,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -126,20 +113,15 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import org.monogram.presentation.di.appInject
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
 import org.monogram.domain.models.MessageViewerModel
-import org.monogram.domain.models.RecentEmojiModel
 import org.monogram.domain.repository.EmojiRepository
 import org.monogram.presentation.R
 import org.monogram.presentation.core.ui.Avatar
-import org.monogram.presentation.core.util.AppPreferences
-import org.monogram.presentation.core.util.DateFormatManager
 import org.monogram.presentation.di.LocalAppContainer
+import org.monogram.presentation.di.appInject
 import org.monogram.presentation.features.chats.currentChat.chatContent.DeleteMessagesSheet
-import org.monogram.presentation.features.chats.currentChat.components.chats.getEmojiFontFamily
-import org.monogram.presentation.features.stickers.ui.view.StickerImage
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -485,10 +467,15 @@ fun MessageOptionsMenu(
                 drawContent()
             }
     ) {
-        Surface(
+        Column(
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .offset { menuPosition }
+        ) {
+
+
+        Surface(
+            modifier = Modifier
                 .width(IntrinsicSize.Min)
                 .widthIn(min = 208.dp, max = 276.dp)
                 .heightIn(max = maxMenuHeight)
@@ -508,7 +495,7 @@ fun MessageOptionsMenu(
                     }
                 }
                 .clickable(enabled = false) {},
-            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+            color = Color.Transparent,
             tonalElevation = 6.dp,
             shape = RoundedCornerShape(16.dp)
         ) {
@@ -589,6 +576,21 @@ fun MessageOptionsMenu(
                     modifier = contentModifier
                         .padding(vertical = 4.dp)
                 ) {
+                    ReactionsRow(
+                        message = message,
+                        availableReactions = availableReactions,
+                        suppressAppearanceAnimation = suppressNextReactionsAppearanceAnimation,
+                        onAppearanceAnimationConsumed = {
+                            suppressNextReactionsAppearanceAnimation = false
+                        },
+                        onReactionsChanged = { reactionCount ->
+                            hasReactionsInMessage = reactionCount > 0
+                        },
+                        onReaction = { reaction ->
+                            animateOutAndDismiss { onReaction(reaction) }
+                        }
+                    )
+
                     DropdownMenuGroup(
                         shapes = MenuDefaults.groupShape(0, 1),
                         contentPadding = PaddingValues(0.dp),
@@ -597,21 +599,6 @@ fun MessageOptionsMenu(
                         shadowElevation = 0.dp
                     ) {
                     if (page == MenuPage.Main) {
-                        ReactionsRow(
-                            message = message,
-                            availableReactions = availableReactions,
-                            suppressAppearanceAnimation = suppressNextReactionsAppearanceAnimation,
-                            onAppearanceAnimationConsumed = {
-                                suppressNextReactionsAppearanceAnimation = false
-                            },
-                            onReactionsChanged = { reactionCount ->
-                                hasReactionsInMessage = reactionCount > 0
-                            },
-                            onReaction = { reaction ->
-                                animateOutAndDismiss { onReaction(reaction) }
-                            }
-                        )
-
                         InternalMenuHeaderInfo(
                             message = message,
                             showReadInfo = showReadInfo,
@@ -918,6 +905,7 @@ fun MessageOptionsMenu(
                 }
             }
         }
+        }
     }
 }
 
@@ -1065,114 +1053,6 @@ private enum class MenuPage {
     More,
     Cocoon,
     Viewers
-}
-
-@Composable
-private fun ReactionsRow(
-    message: MessageModel,
-    availableReactions: List<String>,
-    suppressAppearanceAnimation: Boolean,
-    onAppearanceAnimationConsumed: () -> Unit,
-    onReactionsChanged: (Int) -> Unit,
-    onReaction: (String) -> Unit,
-    appPreferences: AppPreferences = appInject()
-) {
-    val haptic = LocalHapticFeedback.current
-
-    val context = LocalContext.current
-    val emojiStyle by appPreferences.emojiStyle.collectAsState()
-    val emojiFontFamily = remember(context, emojiStyle) { getEmojiFontFamily(context, emojiStyle) }
-
-    val reactions = remember(availableReactions) {
-        if (availableReactions.isNotEmpty()) {
-            availableReactions.map { RecentEmojiModel(it) }
-        } else {
-            emptyList()
-        }
-    }
-
-    LaunchedEffect(reactions.size) {
-        onReactionsChanged(reactions.size)
-    }
-
-    LaunchedEffect(suppressAppearanceAnimation, reactions.isNotEmpty()) {
-        if (suppressAppearanceAnimation && reactions.isNotEmpty()) {
-            onAppearanceAnimationConsumed()
-        }
-    }
-
-    AnimatedVisibility(
-        visible = reactions.isNotEmpty(),
-        enter = if (suppressAppearanceAnimation) {
-            EnterTransition.None
-        } else {
-            fadeIn(animationSpec = tween(150, easing = LinearOutSlowInEasing))
-        },
-        exit = fadeOut(animationSpec = tween(100, easing = FastOutLinearInEasing)),
-        label = "ReactionsRowVisibility"
-    ) {
-        Column {
-            Row(
-                modifier = Modifier
-                    .horizontalScroll(rememberScrollState())
-                    .padding(vertical = 4.dp)
-                    .padding(horizontal = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                reactions.forEach { reaction ->
-                    val isChosen = message.reactions.any { it.isChosen && it.emoji == reaction.emoji }
-
-                    val backgroundColor by animateColorAsState(
-                        targetValue = if (isChosen) MaterialTheme.colorScheme.primaryContainer
-                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        animationSpec = spring(stiffness = Spring.StiffnessLow),
-                        label = "reactionBg"
-                    )
-
-                    val scale by animateFloatAsState(
-                        targetValue = if (isChosen) 1.06f else 1f,
-                        animationSpec = tween(durationMillis = 160, easing = LinearOutSlowInEasing),
-                        label = "reactionScale"
-                    )
-
-                    Box(
-                        modifier = Modifier
-                            .size(42.dp)
-                            .graphicsLayer {
-                                scaleX = scale
-                                scaleY = scale
-                            }
-                            .clip(CircleShape)
-                            .background(backgroundColor)
-                            .clickable {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                onReaction(reaction.emoji)
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        val sticker = reaction.sticker
-                        if (sticker != null) {
-                            StickerImage(
-                                path = sticker.path,
-                                modifier = Modifier.size(28.dp),
-                            )
-                        } else {
-                            Text(
-                                text = reaction.emoji,
-                                fontSize = 24.sp,
-                                fontFamily = emojiFontFamily
-                            )
-                        }
-                    }
-                }
-            }
-
-            HorizontalDivider(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-            )
-        }
-    }
 }
 
 @Composable
