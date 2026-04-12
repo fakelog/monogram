@@ -22,6 +22,7 @@ import org.monogram.domain.repository.PushProvider
 import org.monogram.presentation.core.util.AppPreferences
 import org.monogram.presentation.core.util.LocalVideoPlayerPool
 import org.monogram.presentation.core.util.NightMode
+import org.monogram.presentation.di.LocalAppContainer
 import org.monogram.presentation.features.chats.currentChat.components.chats.LocalLinkHandler
 import org.monogram.presentation.root.DefaultAppComponentContext
 import org.monogram.presentation.root.DefaultRootComponent
@@ -42,6 +43,7 @@ class MainActivity : FragmentActivity() {
     @OptIn(ExperimentalDecomposeApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val appContainer = (application as App).appContainer
         setTheme(resolveStartupTheme())
         val splashScreen = installSplashScreen()
         splashScreen.setKeepOnScreenCondition { keepSplashOnScreen }
@@ -60,7 +62,7 @@ class MainActivity : FragmentActivity() {
             DefaultRootComponent(
                 DefaultAppComponentContext(
                     componentContext = componentContext,
-                    container = (application as App).appContainer,
+                    container = appContainer,
                 )
             )
         }
@@ -80,6 +82,7 @@ class MainActivity : FragmentActivity() {
 
             AppThemeContainer(root.appPreferences) {
                 CompositionLocalProvider(
+                    LocalAppContainer provides appContainer,
                     LocalLinkHandler provides root::handleLink,
                     LocalVideoPlayerPool provides root.videoPlayerPool
                 ) {
