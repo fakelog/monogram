@@ -41,6 +41,7 @@ android {
 
     buildTypes {
         release {
+            applicationIdSuffix = "ium"
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
