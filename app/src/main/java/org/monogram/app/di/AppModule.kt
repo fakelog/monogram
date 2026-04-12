@@ -3,7 +3,6 @@ package org.monogram.app.di
 import android.content.ClipboardManager
 import android.content.Context
 import android.telephony.TelephonyManager
-import android.text.format.DateFormat
 import coil3.ImageLoader
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.svg.SvgDecoder
@@ -85,7 +84,8 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideDateFormatManager(@ApplicationContext context: Context): DateFormatManager = DateFormatManagerImpl(DateFormat.is24HourFormat(context))
+    fun provideDateFormatManager(@ApplicationContext context: Context): DateFormatManager =
+        SystemDateFormatManager(context)
 
     @Provides
     fun providePhoneManager(@ApplicationContext context: Context): PhoneManager {
