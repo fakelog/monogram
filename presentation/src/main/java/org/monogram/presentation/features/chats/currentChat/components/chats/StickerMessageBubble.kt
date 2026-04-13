@@ -41,6 +41,7 @@ fun StickerMessageBubble(
     onReplyClick: (MessageModel) -> Unit = {},
     onReactionClick: (String) -> Unit = {},
     onStickerClick: (Long) -> Unit = {},
+    onDownloadSticker: (Int) -> Unit = {},
     onLongClick: () -> Unit = {},
     toProfile: (Long) -> Unit = {},
     modifier: Modifier = Modifier
@@ -82,17 +83,22 @@ fun StickerMessageBubble(
             }
         }
 
+        val validPath = content.path?.takeIf { it.isNotBlank() && File(it).exists() }
+
         Box(
             modifier = Modifier
                 .size(stickerSize.dp)
                 .combinedClickable(
                     onClick = {
-                        onStickerClick(content.setId)
+                        if (validPath != null) {
+                            onStickerClick(content.setId)
+                        } else if (!content.isDownloading && content.fileId != 0) {
+                            onDownloadSticker(content.fileId)
+                        }
                     },
                     onLongClick = onLongClick
                 )
         ) {
-            val validPath = content.path?.takeIf { it.isNotBlank() && File(it).exists() }
             if (validPath != null) {
                 val stickerModel = StickerModel(
                     id = content.id,

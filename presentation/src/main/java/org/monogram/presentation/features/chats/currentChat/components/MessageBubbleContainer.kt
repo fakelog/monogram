@@ -410,6 +410,7 @@ private fun MessageContentSelector(
                     onReplyClick = onGoToReply,
                     onReactionClick = { onReactionClick(msg.id, it) },
                     onStickerClick = { onStickerClick(it) },
+                    onDownloadSticker = onDownloadPhoto,
                     onLongClick = {
                         onReplyClick(
                             bubblePosition,

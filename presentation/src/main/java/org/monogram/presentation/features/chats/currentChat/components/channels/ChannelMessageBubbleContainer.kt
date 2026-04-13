@@ -360,6 +360,7 @@ fun ChannelMessageBubbleContainer(
                                 onReplyClick = onGoToReply,
                                 onReactionClick = { onReactionClick(msg.id, it) },
                                 onStickerClick = { onStickerClick(content.setId) },
+                                onDownloadSticker = onDownloadPhoto,
                                 onLongClick = {
                                     onReplyClick(
                                         bubblePosition,
