@@ -123,6 +123,33 @@ private fun DefaultChatComponent.resolveRemappedMessageId(messageId: Long): Long
     return current
 }
 
+private fun compareMessages(
+    left: MessageModel,
+    right: MessageModel,
+    isComments: Boolean
+): Int {
+    return if (isComments) {
+        compareValuesBy(left, right, MessageModel::date, MessageModel::id)
+    } else {
+        compareValuesBy(right, left, MessageModel::date, MessageModel::id)
+    }
+}
+
+private fun findInsertIndex(
+    messages: List<MessageModel>,
+    candidate: MessageModel,
+    isComments: Boolean
+): Int {
+    var low = 0
+    var high = messages.size
+    while (low < high) {
+        val mid = (low + high) ushr 1
+        val cmp = compareMessages(messages[mid], candidate, isComments)
+        if (cmp < 0) low = mid + 1 else high = mid
+    }
+    return low
+}
+
 private suspend fun DefaultChatComponent.updateMessagesUnsafe(
     newMessages: List<MessageModel>,
     replace: Boolean = false
@@ -161,11 +188,7 @@ private suspend fun DefaultChatComponent.updateMessagesUnsafe(
             }
         }
 
-        val currentList = if (replace) {
-            state.messages.filter { it.sendingState is MessageSendingState.Pending }
-        } else {
-            state.messages
-        }
+        val currentList = if (replace) state.messages.filter { it.sendingState is MessageSendingState.Pending } else state.messages
         val existingReactionsById = if (replace) {
             state.messages
                 .filter { it.reactions.isNotEmpty() }
@@ -181,42 +204,57 @@ private suspend fun DefaultChatComponent.updateMessagesUnsafe(
 
         val isComments = state.rootMessage != null
 
-        val messageMap = LinkedHashMap<Long, MessageModel>(currentList.size + filteredNewMessages.size)
-        currentList.forEach { messageMap[it.id] = it }
+        if (replace) {
+            val messageMap = LinkedHashMap<Long, MessageModel>(currentList.size + filteredNewMessages.size)
+            currentList.forEach { messageMap[it.id] = it }
 
-        var hasChanges = replace
-        filteredNewMessages.forEach { msg ->
-            val previous = messageMap[msg.id] ?: previousMessagesById[msg.id]
-            val mergedMessage = if (previous != null) mergeSenderVisuals(previous, msg) else msg
-            val restoredMessage = if (mergedMessage.reactions.isEmpty()) {
-                val previousReactions = existingReactionsById[msg.id]
-                if (!previousReactions.isNullOrEmpty()) {
-                    mergedMessage.copy(reactions = previousReactions)
+            filteredNewMessages.forEach { msg ->
+                val previous = messageMap[msg.id] ?: previousMessagesById[msg.id]
+                val mergedMessage = if (previous != null) mergeSenderVisuals(previous, msg) else msg
+                val restoredMessage = if (mergedMessage.reactions.isEmpty()) {
+                    val previousReactions = existingReactionsById[msg.id]
+                    if (!previousReactions.isNullOrEmpty()) mergedMessage.copy(reactions = previousReactions) else mergedMessage
                 } else {
                     mergedMessage
                 }
-            } else {
-                mergedMessage
+                messageMap[msg.id] = restoredMessage
             }
-            val old = messageMap.put(msg.id, restoredMessage)
-            if (old != restoredMessage) {
+
+            val mergedMessages = messageMap.values.let {
+                if (isComments) {
+                    it.sortedWith(compareBy<MessageModel> { it.date }.thenBy { it.id })
+                } else {
+                    it.sortedWith(compareByDescending<MessageModel> { it.date }.thenByDescending { it.id })
+                }
+            }
+
+            if (mergedMessages == state.messages) state else state.copy(messages = mergedMessages)
+        } else {
+            val mergedMessages = currentList.toMutableList()
+            var hasChanges = false
+            filteredNewMessages.forEach { msg ->
+                val previousIndex = mergedMessages.indexOfFirst { it.id == msg.id }
+                val previous = if (previousIndex >= 0) mergedMessages[previousIndex] else null
+                val mergedMessage = if (previous != null) mergeSenderVisuals(previous, msg) else msg
+                val restoredMessage = if (mergedMessage.reactions.isEmpty()) {
+                    val previousReactions = previous?.reactions
+                    if (!previousReactions.isNullOrEmpty()) mergedMessage.copy(reactions = previousReactions) else mergedMessage
+                } else {
+                    mergedMessage
+                }
+
+                if (previous == restoredMessage) return@forEach
+
+                if (previousIndex >= 0) {
+                    mergedMessages.removeAt(previousIndex)
+                }
+                val insertIndex = findInsertIndex(mergedMessages, restoredMessage, isComments)
+                mergedMessages.add(insertIndex, restoredMessage)
                 hasChanges = true
             }
-        }
 
-        if (!hasChanges) {
-            return@update state
+            if (!hasChanges || mergedMessages == state.messages) state else state.copy(messages = mergedMessages)
         }
-
-        val mergedMessages = messageMap.values.let {
-            if (isComments) {
-                it.sortedWith(compareBy<MessageModel> { it.date }.thenBy { it.id })
-            } else {
-                it.sortedWith(compareByDescending<MessageModel> { it.date }.thenByDescending { it.id })
-            }
-        }
-
-        if (mergedMessages == state.messages) state else state.copy(messages = mergedMessages)
     }
 }
 
@@ -1254,28 +1292,26 @@ private fun DefaultChatComponent.updateFullScreenImagePath(messageId: Long, newP
     }
 }
 
-private inline fun DefaultChatComponent.updateMessageContent(
+private suspend inline fun DefaultChatComponent.updateMessageContent(
     messageId: Long,
     crossinline transform: (MessageModel) -> MessageModel
 ) {
-    scope.launch {
-        messageMutex.withLock {
-            val targetMessageId = resolveRemappedMessageId(messageId)
-            _state.update { currentState ->
-                val currentMessages = currentState.messages.toMutableList()
-                val index = currentMessages.indexOfFirst { it.id == targetMessageId }
-                if (index != -1) {
-                    val currentMessage = currentMessages[index]
-                    val updatedMessage = transform(currentMessage)
-                    if (updatedMessage != currentMessage) {
-                        currentMessages[index] = updatedMessage
-                        currentState.copy(messages = currentMessages)
-                    } else {
-                        currentState
-                    }
+    messageMutex.withLock {
+        val targetMessageId = resolveRemappedMessageId(messageId)
+        _state.update { currentState ->
+            val currentMessages = currentState.messages.toMutableList()
+            val index = currentMessages.indexOfFirst { it.id == targetMessageId }
+            if (index != -1) {
+                val currentMessage = currentMessages[index]
+                val updatedMessage = transform(currentMessage)
+                if (updatedMessage != currentMessage) {
+                    currentMessages[index] = updatedMessage
+                    currentState.copy(messages = currentMessages)
                 } else {
                     currentState
                 }
+            } else {
+                currentState
             }
         }
     }
