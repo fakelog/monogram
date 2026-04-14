@@ -144,6 +144,34 @@ jobs:
         SIGNING_KEY_PASSWORD=$RELEASE_KEY_PASSWORD
         EOF
 
+    - name: Validate release keystore credentials
+      env:
+        RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+        RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+        RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+      run: |
+        keystore_path="$GITHUB_WORKSPACE/release.keystore"
+
+        keytool -list \
+          -keystore "$keystore_path" \
+          -storepass "$RELEASE_STORE_PASSWORD" \
+          -alias "$RELEASE_KEY_ALIAS" >/dev/null
+
+        work_dir="$(mktemp -d)"
+        printf 'Manifest-Version: 1.0\n' > "$work_dir/MANIFEST.MF"
+        jar --create --file "$work_dir/unsigned.jar" --manifest "$work_dir/MANIFEST.MF" -C "$work_dir" MANIFEST.MF
+
+        if ! jarsigner \
+          -keystore "$keystore_path" \
+          -storepass "$RELEASE_STORE_PASSWORD" \
+          -keypass "$RELEASE_KEY_PASSWORD" \
+          -signedjar "$work_dir/signed.jar" \
+          "$work_dir/unsigned.jar" \
+          "$RELEASE_KEY_ALIAS" >/dev/null 2>&1; then
+          echo "Release keystore credentials are invalid. Check RELEASE_KEY_ALIAS and RELEASE_KEY_PASSWORD against the private key inside RELEASE_KEYSTORE_BASE64." >&2
+          exit 1
+        fi
+
     - name: Make all scripts executable
       run: |
         chmod +x gradlew
