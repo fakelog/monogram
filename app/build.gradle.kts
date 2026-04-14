@@ -3,6 +3,25 @@ import com.android.build.api.variant.FilterConfiguration
 import com.android.build.api.variant.impl.VariantOutputImpl
 import com.google.android.gms.oss.licenses.plugin.DependencyTask
 import com.google.gms.googleservices.GoogleServicesPlugin
+import java.util.Properties
+
+val localProperties = rootProject.extra["localProperties"] as Properties
+
+fun propertyOrEnv(name: String): String? {
+    val value = localProperties.getProperty(name) ?: System.getenv(name)
+    return value?.takeIf { it.isNotBlank() }
+}
+
+val signingStoreFile = propertyOrEnv("SIGNING_STORE_FILE")
+val signingStorePassword = propertyOrEnv("SIGNING_STORE_PASSWORD")
+val signingKeyAlias = propertyOrEnv("SIGNING_KEY_ALIAS")
+val signingKeyPassword = propertyOrEnv("SIGNING_KEY_PASSWORD")
+val hasReleaseSigning = listOf(
+    signingStoreFile,
+    signingStorePassword,
+    signingKeyAlias,
+    signingKeyPassword
+).all { !it.isNullOrBlank() }
 
 plugins {
     alias(libs.plugins.android.application)
@@ -39,6 +58,17 @@ android {
         generateLocaleConfig = true
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = rootProject.file(signingStoreFile!!)
+                storePassword = signingStorePassword
+                keyAlias = signingKeyAlias
+                keyPassword = signingKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -50,7 +80,11 @@ android {
             buildFeatures {
                 resValues = true
             }
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (hasReleaseSigning) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             resValue("string", "app_name", "MonoGram")
         }
         debug {

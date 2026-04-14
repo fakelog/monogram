@@ -121,6 +121,29 @@ jobs:
       if: ${{ env.GOOGLE_SERVICES_JSON != '' }}
       run: printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
 
+    - name: Prepare release signing config
+      env:
+        RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+        RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+        RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+        RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+      run: |
+        if [ -z "$RELEASE_KEYSTORE_BASE64" ] || [ -z "$RELEASE_STORE_PASSWORD" ] || [ -z "$RELEASE_KEY_ALIAS" ] || [ -z "$RELEASE_KEY_PASSWORD" ]; then
+          echo "Missing one or more release signing secrets (RELEASE_KEYSTORE_BASE64, RELEASE_STORE_PASSWORD, RELEASE_KEY_ALIAS, RELEASE_KEY_PASSWORD)." >&2
+          exit 1
+        fi
+
+        keystore_path="$GITHUB_WORKSPACE/release.keystore"
+        printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$keystore_path"
+
+        touch local.properties
+        cat >> local.properties <<EOF
+        SIGNING_STORE_FILE=$keystore_path
+        SIGNING_STORE_PASSWORD=$RELEASE_STORE_PASSWORD
+        SIGNING_KEY_ALIAS=$RELEASE_KEY_ALIAS
+        SIGNING_KEY_PASSWORD=$RELEASE_KEY_PASSWORD
+        EOF
+
     - name: Make all scripts executable
       run: |
         chmod +x gradlew
@@ -144,22 +167,33 @@ jobs:
         fi
         echo "VERSION_NAME=$version_name" >> "$GITHUB_ENV"
 
-    - name: Ensure release tag exists
+    - name: Resolve release tag
       env:
         VERSION_NAME: ${{ env.VERSION_NAME }}
       run: |
+        short_sha=$(printf '%.7s' "$GITHUB_SHA")
+        release_tag="v${VERSION_NAME}-${short_sha}"
+        echo "SHORT_SHA=$short_sha" >> "$GITHUB_ENV"
+        echo "RELEASE_TAG=$release_tag" >> "$GITHUB_ENV"
+
+    - name: Ensure release tag exists
+      env:
+        RELEASE_TAG: ${{ env.RELEASE_TAG }}
+      run: |
         git fetch --tags
-        if git rev-parse "$VERSION_NAME" >/dev/null 2>&1; then
-          echo "Tag $VERSION_NAME already exists"
+        if git rev-parse "$RELEASE_TAG" >/dev/null 2>&1; then
+          echo "Tag $RELEASE_TAG already exists"
         else
-          git tag "$VERSION_NAME" "$GITHUB_SHA"
-          git push origin "$VERSION_NAME"
+          git tag -a "$RELEASE_TAG" "$GITHUB_SHA" -m "Release $RELEASE_TAG"
+          git push origin "$RELEASE_TAG"
         fi
 
     - name: Publish GitHub Release
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         VERSION_NAME: ${{ env.VERSION_NAME }}
+        RELEASE_TAG: ${{ env.RELEASE_TAG }}
+        SHORT_SHA: ${{ env.SHORT_SHA }}
       run: |
         set -- \
           app/build/outputs/apk/release/monogram-universal-"$VERSION_NAME"-release.apk \
@@ -167,10 +201,11 @@ jobs:
           app/build/outputs/apk/release/monogram-armeabi-v7a-"$VERSION_NAME"-release.apk \
           app/build/outputs/apk/release/monogram-x86_64-"$VERSION_NAME"-release.apk
 
-        if gh release view "$VERSION_NAME" >/dev/null 2>&1; then
-          gh release upload "$VERSION_NAME" "$@" --clobber
+        if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+          gh release upload "$RELEASE_TAG" "$@" --clobber
         else
-          gh release create "$VERSION_NAME" "$@" \
-            --title "MonoGram $VERSION_NAME" \
-            --notes "Automated release for version $VERSION_NAME."
+          gh release create "$RELEASE_TAG" "$@" \
+            --target "$GITHUB_SHA" \
+            --title "MonoGram $VERSION_NAME ($SHORT_SHA)" \
+            --notes "Automated release for version $VERSION_NAME from commit $GITHUB_SHA."
         fi
