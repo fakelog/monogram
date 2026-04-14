@@ -41,10 +41,10 @@ fun PinnedMessageBar(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .padding(12.dp)
             .clickable(onClick = if (count > 1) onShowAll else onClick),
         color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(24.dp),
         tonalElevation = 4.dp
     ) {
         Row(
